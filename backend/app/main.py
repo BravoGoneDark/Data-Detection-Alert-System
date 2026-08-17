@@ -1,13 +1,16 @@
 import hashlib
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
-app = FastAPI(title="DDAS - Stage 1")
+from app.database import get_db
+from app.models import Dataset
 
-# Allow the Vite dev server to call this API during local development.
+app = FastAPI(title="DDAS - Stage 2")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
@@ -15,10 +18,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory "repository" of previously seen datasets.
-# This is intentionally NOT a database yet — that's Stage 2.
-# Resets every time the server restarts.
-dataset_registry: list[dict] = []
+
+class ExistingDataset(BaseModel):
+    filename: str
+    sha256: str
+    size_bytes: int
+    uploaded_at: datetime
+
+    class Config:
+        from_attributes = True  # lets Pydantic read SQLAlchemy model attributes directly
 
 
 class UploadResult(BaseModel):
@@ -26,32 +34,23 @@ class UploadResult(BaseModel):
     sha256: str
     size_bytes: int
     duplicate: bool
-    existing: dict | None = None
+    existing: ExistingDataset | None = None
 
 
 def compute_sha256(file_bytes: bytes) -> str:
-    """
-    Compute the SHA-256 hash of raw file bytes.
-    hashlib processes data in chunks internally, but since we already
-    have the full byte string in memory, update() once is fine here.
-    For very large files streamed from disk, you'd feed this in chunks
-    instead of loading everything into memory at once.
-    """
     hasher = hashlib.sha256()
     hasher.update(file_bytes)
     return hasher.hexdigest()
 
 
 @app.post("/datasets/upload", response_model=UploadResult)
-async def upload_dataset(file: UploadFile = File(...)):
+async def upload_dataset(file: UploadFile = File(...), db: Session = Depends(get_db)):
     file_bytes = await file.read()
     file_hash = compute_sha256(file_bytes)
 
-    # Check for an exact match against everything seen so far.
-    existing = next(
-        (entry for entry in dataset_registry if entry["sha256"] == file_hash),
-        None,
-    )
+    # Query Postgres for an existing row with this hash.
+    # This uses the unique index on sha256 — a fast lookup, not a scan.
+    existing = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
 
     if existing:
         return UploadResult(
@@ -59,17 +58,18 @@ async def upload_dataset(file: UploadFile = File(...)):
             sha256=file_hash,
             size_bytes=len(file_bytes),
             duplicate=True,
-            existing=existing,
+            existing=ExistingDataset.model_validate(existing),
         )
 
-    # No match — register this as a new dataset.
-    new_entry = {
-        "filename": file.filename,
-        "sha256": file_hash,
-        "size_bytes": len(file_bytes),
-        "uploaded_at": datetime.now(timezone.utc).isoformat(),
-    }
-    dataset_registry.append(new_entry)
+    # No match — insert a new row.
+    new_dataset = Dataset(
+        filename=file.filename,
+        sha256=file_hash,
+        size_bytes=len(file_bytes),
+    )
+    db.add(new_dataset)
+    db.commit()
+    db.refresh(new_dataset)  # pulls back the DB-generated id and uploaded_at
 
     return UploadResult(
         filename=file.filename,
@@ -81,6 +81,6 @@ async def upload_dataset(file: UploadFile = File(...)):
 
 
 @app.get("/datasets")
-async def list_datasets():
+async def list_datasets(db: Session = Depends(get_db)):
     """Debug endpoint — see everything registered so far."""
-    return dataset_registry
+    return db.query(Dataset).all()
