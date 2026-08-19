@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import AuthenticationPage from "./components/auth/AuthenticationPage";
 
 const API_URL = 'http://localhost:8000'
 
-function App() {
+function UploadPanel() {
+  const { token, logout } = useAuth()
   const [file, setFile] = useState(null)
   const [result, setResult] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -27,8 +30,15 @@ function App() {
     try {
       const response = await fetch(`${API_URL}/datasets/upload`, {
         method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
         body: formData,
       })
+
+      if (response.status === 401) {
+        // token invalid/expired — drop back to the auth screen
+        logout()
+        return
+      }
 
       if (!response.ok) {
         throw new Error(`Server responded with ${response.status}`)
@@ -46,7 +56,15 @@ function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
       <div className="w-full max-w-md bg-slate-900 rounded-2xl p-8 shadow-xl border border-slate-800">
-        <h1 className="text-2xl font-bold mb-1">DDAS</h1>
+        <div className="flex items-start justify-between mb-1">
+          <h1 className="text-2xl font-bold">DDAS</h1>
+          <button
+            onClick={logout}
+            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            Logout
+          </button>
+        </div>
         <p className="text-slate-400 text-sm mb-6">
           Data Download Duplication & Anomaly Detection
         </p>
@@ -109,6 +127,16 @@ function App() {
         )}
       </div>
     </div>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthenticationPage>
+        <UploadPanel />
+      </AuthenticationPage>
+    </AuthProvider>
   )
 }
 
