@@ -208,9 +208,95 @@ All terminal commands standardized to PowerShell syntax (as opposed to bash/Unix
 
 ---
 
-## 8. Not Yet Started
+## 8. Roadmap
 
-**Stage 3 — Authentication** is next in the roadmap:
 `Core DDAS → PostgreSQL → Authentication → RBAC → Duplicate Alerts → Metadata Similarity → TF-IDF/Cosine → MinHash/SimHash → LSH → Audit Logging → Bulk Download Detection → DLP → Security Dashboard → Advanced UI/Animation → C++ Optimization`
 
-No authentication-related code, dependencies, or concepts have been introduced yet.
+Stage 3 (Authentication) is now in progress — see Section 9.
+
+---
+
+## 9. Stage 3 — Authentication (In Progress)
+
+**Date:** August 18, 2026
+**Status:** User model, migration, and crypto helper module complete and verified. Signup/login endpoints and route protection still pending.
+
+### 9.1 Project Structure Additions
+
+```
+backend/
+├── app/
+│   ├── main.py          ← unchanged this session
+│   ├── database.py      ← unchanged this session
+│   ├── models.py        ← Stage 3: added User class alongside Dataset
+│   └── security.py      ← Stage 3 (new): argon2 password hashing + JWT creation/decoding
+├── alembic/
+│   └── versions/
+│       └── c7c0961ffdc9_add_users_table.py   ← Stage 3: new users table migration
+└── .env                 ← Stage 3: added JWT_SECRET_KEY alongside existing DATABASE_URL
+```
+
+No new top-level folders. Stage 3 additively extends Stage 2's structure rather than restructuring it — `models.py` now defines two tables (`Dataset`, `User`) instead of one, and `security.py` is a new module sitting alongside `database.py` at the same level.
+
+### 9.2 New Concepts and Technologies
+
+**Authentication vs. Authorization** — Stage 3 answers "who is making this request" (authentication). Stage 4 (RBAC) will separately answer "what is this identified user allowed to do" (authorization). Keeping these as two distinct stages mirrors how real systems separate identity verification from permission checking — a user can be authenticated (logged in) but still denied access to a specific action if they lack the right role.
+
+**Password hashing — why not SHA-256 again:** Stage 1 used SHA-256 to fingerprint file contents, and it was tempting to reach for the same tool here, but password hashing has the opposite design goal from file hashing. File hashing (SHA-256) is deliberately **fast** — you want to hash large files quickly and compare many of them. Password hashing must be deliberately **slow and computationally expensive**, because if a database of hashed passwords is ever stolen, a fast hash lets an attacker try billions of guesses per second on cheap hardware (a "brute-force" attack). Slow, memory-hard hashing functions make that attack impractical even with stolen data.
+
+**Argon2 (specifically Argon2id)** — the password hashing algorithm chosen for DDAS, via the `argon2-cffi` Python library. Argon2 won the Password Hashing Competition in 2015 and is currently the most modern, recommended choice — stronger than the older, more commonly-tutorialized `bcrypt`, because it's resistant to both GPU-based cracking attempts and certain side-channel attacks, while requiring no manual tuning (the library's defaults are already sound). Two functions wrap this: `hash_password()` (turns a plaintext password into a secure hash for storage) and `verify_password()` (checks a login attempt's plaintext password against the stored hash, without ever needing to "decrypt" the hash — hashing is one-way by design).
+
+**JWT (JSON Web Token)** — the mechanism chosen for proving a user's identity on subsequent requests after login, via the `python-jose` library. A JWT is a signed piece of data (here containing the user's ID and an expiration time) that the server generates once at login and hands to the client. On every future request, the client sends this token back, and the server verifies its cryptographic signature — proving the token hasn't been tampered with — without needing to look anything up in the database or maintain server-side session state. This was chosen over traditional session-based authentication (where the server stores session data and gives the client only a reference ID) because:
+- The frontend (Vite, port 5173) and backend (FastAPI, port 8000) are separate origins — a stateless, header-based token avoids cross-origin cookie complications.
+- Stage 4 (RBAC) will need the user's role available on every request; embedding it as a JWT claim means permission checks won't require a database round-trip on every single call.
+- The tradeoff accepted: a JWT remains valid until it expires, even if a user "logs out" — there is no instant revocation without additional infrastructure (a token blacklist). This has been explicitly deferred as a future hardening item (likely bundled into Stage 10's audit logging or a dedicated security pass near Stage 12–13), not solved now. Current expiry is set to 24 hours.
+
+**`python-jose[cryptography]`** — the specific library used to create and decode JWTs. The `[cryptography]` extra installs the underlying cryptographic backend needed for signing/verifying tokens (as opposed to a pure-Python fallback, which is slower and less standard).
+
+**`argon2-cffi`** — the Python library providing Argon2 hashing. The `cffi` in the name refers to it being a C Foreign Function Interface binding — Argon2's reference implementation is written in C for performance, and this package provides the Python wrapper around it, rather than a pure-Python reimplementation.
+
+### 9.3 Database Change: `users` Table
+
+A new `User` SQLAlchemy model was added to `models.py`, with columns: `id` (primary key), `username` (unique, indexed), `email` (unique, indexed), `hashed_password`, and `created_at` (server-side default timestamp, same pattern as `Dataset.uploaded_at`).
+
+**Design decision — username AND email, not just one:** the login flow will accept either identifier interchangeably (a single "identifier" field checked against both columns), a pattern seen in systems like GitHub. This means signup must separately validate that neither the chosen username nor email is already taken, and return distinct, specific error messages for each collision (rather than one generic error) — prioritizing user-friendliness for this hackathon-scope project, while acknowledging the minor security tradeoff that this makes it slightly easier for an outside party to determine whether a specific email is already registered.
+
+**Design decision — no `role` column yet:** Role-based fields were deliberately excluded from this migration, kept strictly out of scope for Stage 3, and reserved for their own dedicated migration in Stage 4 (RBAC) — keeping each migration focused on exactly one stage's concern.
+
+**Migration workflow followed (same pattern established in Stage 2):**
+1. Added the `User` class to `models.py`.
+2. Updated `alembic/env.py`'s import line to include `User` alongside the existing `Dataset` import — necessary because Alembic's autogenerate only detects model classes that have actually been imported somewhere and thus registered on the shared `Base.metadata`; simply defining a class in `models.py` isn't enough on its own.
+3. Ran `alembic revision --autogenerate -m "add users table"`, which correctly detected only the new `users` table and its three indexes, leaving the existing `datasets` table untouched.
+4. Reviewed the generated migration script before applying it (standard practice with autogenerate, since it's not infallible).
+5. Ran `alembic upgrade head` to apply it.
+6. Verified the live schema directly via `psql` (`docker exec -it ddas_postgres psql -U ddas_user -d ddas_db -c "\d users"`), confirming all five columns, the primary key, and both unique indexes exist exactly as modeled.
+
+### 9.4 `.env` Change
+
+Added `JWT_SECRET_KEY` alongside the existing `DATABASE_URL`, following the identical loading pattern (`load_dotenv()` + `os.getenv()`) already established in `database.py` — no second, inconsistent configuration system was introduced. The key itself was generated with Python's `secrets` module (`secrets.token_hex(32)`, producing a cryptographically random 64-character hex string) rather than typed manually, since a guessable or weak secret key would undermine the entire point of signing tokens — anyone who could guess or brute-force the key could forge valid tokens for any user. `.env` was reconfirmed as gitignored before committing, so neither the database password nor the new JWT secret enters version control.
+
+### 9.5 Issues Encountered and Resolved
+
+| Issue | Cause | Resolution |
+|---|---|---|
+| `ImportError: cannot import name 'Dataset' from 'app.models'` when running `alembic revision --autogenerate` | The `User` class was pasted into `models.py` in a way that overwrote the existing `Dataset` class entirely, rather than being added alongside it | Rewrote `models.py` to contain both classes |
+| `psycopg2.OperationalError: connection to server ... Connection refused` during the same command | The Stage 2 Postgres Docker container (`ddas_postgres`) was not running at the time | Started it with `docker compose up -d`, confirmed via `docker ps` that port 5432 was listening before retrying |
+| PowerShell `RedirectionNotSupported` error when running a `docker exec ... psql` command | Command was copy-pasted with literal angle-bracket placeholders (e.g. `<postgres_container_name>`) instead of substituting real values; PowerShell interprets `<` as a reserved redirection operator | Retrieved actual container name via `docker ps` and actual DB user/name from `docker-compose.yml`, substituted real values |
+| VS Code showed "import 'dotenv' could not be resolved" on a working line of code | Pylance (VS Code's Python language server) was not pointed at the project's venv interpreter — a cosmetic editor issue rather than a real missing dependency, confirmed working at runtime since `database.py` already relied on the same import successfully | Not yet fixed at time of writing; identified fix is VS Code's "Python: Select Interpreter" command, not yet performed |
+
+### 9.6 Verified Working (as of end of this session)
+
+1. `users` table exists in Postgres with the exact schema modeled in `models.py`, confirmed via direct `psql` inspection.
+2. `security.py`'s `SECRET_KEY` loads correctly from `.env` at runtime (confirmed by printing it via a direct Python one-liner — a real 64-character value, not `None`).
+3. Argon2 hashing/verification functions and JWT creation/decoding functions are written and import cleanly, but not yet exercised end-to-end through an actual HTTP request (no endpoints wired up yet).
+
+### 9.7 Not Yet Done (remaining Stage 3 work)
+
+- `auth.py` — actual `/auth/signup` and `/auth/login` FastAPI route endpoints, following the same inline-Pydantic-model convention established in `main.py` (no separate `schemas.py` file introduced yet).
+- Signup validation returning distinct `HTTPException` messages for a taken username vs. a taken email.
+- Login endpoint accepting a single identifier field (username or email) and returning a signed JWT on success.
+- A `get_current_user` FastAPI dependency that decodes the JWT from the `Authorization: Bearer <token>` header, for use in protecting routes.
+- Applying that dependency to `/datasets/upload`, making it require a logged-in user.
+- Frontend login/signup UI and token storage/attachment to requests.
+- Manual end-to-end verification: signup → login → receive token → call protected upload endpoint with and without a valid token.
+- Commit made for the completed portion of this work; the remainder above will follow in a subsequent commit once implemented.
