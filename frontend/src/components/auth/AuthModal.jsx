@@ -4,10 +4,11 @@ import FormField from "./FormField";
 import { useAuth } from "../../context/AuthContext";
 
 const API_BASE = "http://127.0.0.1:8000";
+const SUBJECT_IMAGE = "/login.png"; 
 
 export default function AuthModal({ onClose }) {
   const { login } = useAuth();
-  const [mode, setMode] = useState("login"); // "login" | "signup"
+  const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,43 +48,89 @@ export default function AuthModal({ onClose }) {
 
   return (
     <motion.div
-      layoutId="auth-panel"
-      className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-[#0a1020]/80 p-8 shadow-[0_0_60px_-15px_rgba(56,189,248,0.25)] backdrop-blur-xl"
-      transition={{ type: "spring", stiffness: 220, damping: 26 }}
+      key="auth-modal"
+      initial={{ opacity: 0, scale: 0.8, y: 20 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.8, y: 20 }}
+      transition={{ type: "spring", stiffness: 280, damping: 22 }}
+      className="relative z-50 w-[70vw] h-[81vh] rounded-3xl bg-[#000000]/60 backdrop-blur-xl border border-[#00c2de]/20 shadow-[0_0_80px_-20px_rgba(0,194,222,0.4)] flex flex-row"
     >
-      {/* ambient inner glow */}
-      <div className="pointer-events-none absolute -top-24 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-cyan-400/10 blur-3xl" />
+      {/* HARDWARE EDGE TAB */}
+      <div className="absolute top-12 -left-[2px] w-1.5 h-16 bg-[#00c2de] rounded-r-md shadow-[0_0_15px_rgba(0,194,222,0.9)] z-50" />
 
-      <div className="relative z-10">
-        <div className="mb-6 flex items-center justify-between">
+      {/* TACTILE MATTE TEXTURE OVERLAY */}
+      <div className="absolute inset-0 pointer-events-none rounded-3xl overflow-hidden z-0">
+        <div 
+          className="absolute inset-0 opacity-20 mix-blend-screen"
+          style={{
+            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='4.5' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`
+          }}
+        />
+        <div 
+          className="absolute inset-0 opacity-[0.03]"
+          style={{
+            backgroundImage: `linear-gradient(rgba(0, 194, 222, 1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 194, 222, 1) 1px, transparent 1px)`,
+            backgroundSize: "4px 4px"
+          }}
+        />
+        <div className="absolute -top-20 -left-20 w-96 h-96 bg-[#00c2de]/20 blur-[100px] rounded-full" />
+      </div>
+
+      {/* LEFT SIDE: 3D Asset & Animations - Now exactly 40% width */}
+      <div className="relative w-[40%] h-full flex items-center justify-center overflow-hidden z-10">
+        <motion.div
+          className="absolute w-[60%] h-[60%] bg-[#00c2de]/15 rounded-full blur-[80px]"
+          animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+        />
+
+        <motion.img
+          src={SUBJECT_IMAGE}
+          alt="Security Lock"
+          className="relative z-20 w-[70%] max-h-[75%] object-contain drop-shadow-[0_0_30px_rgba(0,194,222,0.4)] cursor-pointer"
+          animate={{ y: [-10, 10, -10] }}
+          transition={{ y: { duration: 4, repeat: Infinity, ease: "easeInOut" } }}
+          whileHover={{
+            scale: 1.1,
+            filter: "drop-shadow(0px 0px 50px rgba(0,194,222,0.8))",
+          }}
+        />
+      </div>
+
+      {/* RIGHT SIDE: Form Logic - Now exactly 60% width */}
+      <div className="relative w-[60%] h-full bg-[#000000]/80 p-12 lg:p-16 flex flex-col justify-center z-10 border-l border-[#00c2de]/20 shadow-[-20px_0_50px_rgba(0,0,0,0.8)] rounded-r-3xl">
+        
+        <div className="mb-10 flex items-center justify-between">
           <div>
-            <p className="text-[11px] tracking-[0.3em] text-cyan-400/70">SECURE ACCESS</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-100">
+            <p className="text-xs tracking-[0.3em] text-[#00c2de]/90">
+              SECURE ACCESS
+            </p>
+            <h2 className="mt-2 text-3xl font-bold text-slate-100">
               {mode === "login" ? "Sign in to DDAS" : "Create your account"}
             </h2>
           </div>
           <button
             onClick={onClose}
             aria-label="Close"
-            className="text-slate-500 transition-colors hover:text-slate-300"
+            className="text-slate-500 transition-colors hover:text-[#00c2de]"
           >
             ✕
           </button>
         </div>
 
-        <div className="mb-6 flex gap-1 rounded-lg border border-white/10 bg-white/[0.02] p-1">
+        <div className="mb-10 flex gap-1 rounded-lg bg-[#000000] p-1 border border-[#00c2de]/20 shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
           {["login", "signup"].map((m) => (
             <button
               key={m}
               onClick={() => setMode(m)}
-              className={`relative flex-1 rounded-md py-2 text-xs font-medium tracking-[0.15em] transition-colors ${
-                mode === m ? "text-slate-950" : "text-slate-400 hover:text-slate-200"
+              className={`relative flex-1 rounded-md py-3 text-sm font-medium tracking-[0.15em] transition-colors ${
+                mode === m ? "text-[#000000]" : "text-slate-400 hover:text-slate-200"
               }`}
             >
               {mode === m && (
                 <motion.span
                   layoutId="mode-pill"
-                  className="absolute inset-0 rounded-md bg-cyan-300"
+                  className="absolute inset-0 rounded-md bg-[#00c2de] shadow-[0_0_15px_rgba(0,194,222,0.5)]"
                   transition={{ type: "spring", stiffness: 300, damping: 28 }}
                 />
               )}
@@ -92,7 +139,7 @@ export default function AuthModal({ onClose }) {
           ))}
         </div>
 
-        <motion.form layout onSubmit={handleSubmit} className="space-y-4">
+        <motion.form layout onSubmit={handleSubmit} className="space-y-6">
           <AnimatePresence mode="popLayout" initial={false}>
             {mode === "signup" && (
               <motion.div
@@ -132,7 +179,7 @@ export default function AuthModal({ onClose }) {
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="rounded-md border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300"
+                className="rounded-md bg-red-950/50 px-4 py-3 text-sm text-red-300 border border-red-500/20"
               >
                 {error}
               </motion.p>
@@ -142,14 +189,14 @@ export default function AuthModal({ onClose }) {
           <motion.button
             type="submit"
             disabled={loading}
-            whileHover={{ scale: loading ? 1 : 1.01 }}
+            whileHover={{ scale: loading ? 1 : 1.02 }}
             whileTap={{ scale: loading ? 1 : 0.98 }}
-            className="relative w-full overflow-hidden rounded-lg bg-cyan-300 py-3 text-xs font-semibold tracking-[0.2em] text-slate-950 disabled:opacity-70"
+            className="relative w-full overflow-hidden rounded-lg bg-[#00c2de] py-4 mt-4 text-sm font-bold tracking-[0.2em] text-[#000000] disabled:opacity-70 border-0 shadow-[0_0_20px_rgba(0,194,222,0.3)]"
           >
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <motion.span
-                  className="h-3.5 w-3.5 rounded-full border-2 border-slate-950/30 border-t-slate-950"
+                  className="h-4 w-4 rounded-full border-2 border-[#000000]/30 border-t-[#000000]"
                   animate={{ rotate: 360 }}
                   transition={{ duration: 0.7, repeat: Infinity, ease: "linear" }}
                 />
