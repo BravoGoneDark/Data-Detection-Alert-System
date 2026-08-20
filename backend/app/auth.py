@@ -6,7 +6,7 @@ from sqlalchemy import or_
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models import User
+from app.models import User, Role
 from app.security import hash_password, verify_password, create_access_token, decode_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -38,10 +38,15 @@ def signup(payload: SignupRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == payload.email).first():
         raise HTTPException(status_code=400, detail="Email already taken")
 
+    student_role = db.query(Role).filter(Role.name == "STUDENT").first()
+    if student_role is None:
+        raise HTTPException(status_code=500, detail="Default role not configured")
+
     user = User(
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
+        role_id=student_role.id,   # NEW — was missing
     )
     db.add(user)
     db.commit()

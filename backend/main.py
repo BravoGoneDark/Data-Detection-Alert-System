@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Dataset
+from app.authorization import require_permission
+# get_current_user import from app.auth is no longer needed directly here
 
 app = FastAPI(title="DDAS - Stage 2")
 
@@ -50,7 +52,7 @@ def compute_sha256(file_bytes: bytes) -> str:
 async def upload_dataset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission("dataset:upload")),  # was get_current_user
 ):
 
 
