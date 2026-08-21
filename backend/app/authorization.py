@@ -15,6 +15,37 @@ def user_has_permission(user: User, permission: str) -> bool:
     return any(p.name == permission for p in user.role.permissions)
 
 
+# Classification hierarchy: PUBLIC (0) < INTERNAL (1) < RESTRICTED (2) < CONFIDENTIAL (3)
+CLASSIFICATION_LEVELS = {
+    "PUBLIC": 0,
+    "INTERNAL": 1,
+    "RESTRICTED": 2,
+    "CONFIDENTIAL": 3,
+}
+
+# Maximum classification clearance allowed per role
+ROLE_CLASSIFICATION_CLEARANCE = {
+    "ADMIN": 3,        # PUBLIC, INTERNAL, RESTRICTED, CONFIDENTIAL
+    "FACULTY": 2,      # PUBLIC, INTERNAL, RESTRICTED
+    "RESEARCHER": 2,   # PUBLIC, INTERNAL, RESTRICTED
+    "STUDENT": 1,      # PUBLIC, INTERNAL
+    "GUEST": 0,        # PUBLIC only
+}
+
+
+def can_user_access_classification(user: User, classification: str | None) -> bool:
+    """Checks whether the user's role has security clearance for the given classification."""
+    if not classification:
+        classification = "INTERNAL"
+    classification = classification.upper()
+    req_level = CLASSIFICATION_LEVELS.get(classification, 1)
+
+    role_name = user.role.name if user.role else "GUEST"
+    user_clearance = ROLE_CLASSIFICATION_CLEARANCE.get(role_name, 0)
+
+    return user_clearance >= req_level
+
+
 def require_permission(permission: str):
     """
     Dependency factory. Returns a FastAPI dependency that:

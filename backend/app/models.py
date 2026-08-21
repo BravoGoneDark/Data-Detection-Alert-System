@@ -16,10 +16,16 @@ class Dataset(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String, nullable=False)
-    sha256 = Column(String(64), unique=True, index=True, nullable=False)
+    sha256 = Column(String(64), index=True, nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     uploaded_at = Column(DateTime(timezone=True), server_default=func.now())
-    classification = Column(String, nullable=True)   # NEW — unused until Stage 5
+    classification = Column(String, nullable=True)   # PUBLIC, INTERNAL, RESTRICTED, CONFIDENTIAL
+    uploader_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    storage_path = Column(String, nullable=True)
+    download_count = Column(Integer, default=0, nullable=False)
+    description = Column(String, nullable=True)
+
+    uploader = relationship("User", back_populates="datasets")
 
 
 class User(Base):
@@ -33,6 +39,7 @@ class User(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     role = relationship("Role")   # NEW
+    datasets = relationship("Dataset", back_populates="uploader")
 
 class Permission(Base):
     __tablename__ = "permissions"

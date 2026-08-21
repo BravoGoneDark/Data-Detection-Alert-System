@@ -2,7 +2,7 @@
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
 **Date:** August 17–21, 2026
-**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — now complete, including the animated auth UI), and Stage 4 (RBAC)
+**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), and Stage 5 (Content-Addressable Storage, Duplicate Alert Refinement, Classification-based Access Control)
 
 ---
 
@@ -428,7 +428,82 @@ Same pattern as Stage 2/3, with one addition — seed data and a backfill step, 
 
 ### 10.8 Not Yet Done / Deferred
 
-- Classification-based access enforcement (`datasets.classification` column exists but nothing reads it yet) — deliberately deferred to Stage 5, once dataset retrieval/listing endpoints exist to meaningfully gate.
+- Classification-based access enforcement (`datasets.classification` column exists but nothing reads it yet) — completed in Stage 5.
 - Admin UI for managing roles/permissions or reassigning users — role changes remain a manual DB operation for now.
 - Audit event creation on a `403` denial (spec's RBAC flow diagram includes "Deny + Audit Event") — audit logging itself is Stage 10; this stage only implements the deny, not the logging of it.
 - Self-service role requests or a role selector at signup — explicitly out of scope; new users always default to STUDENT.
+
+---
+
+## 11. Stage 5 — Content-Addressable Storage (CAS), Duplicate Refinement & Classification RBAC — Complete
+
+### 11.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── main.py             ← Stage 5: Rich duplicate response, CAS integration, GET /datasets with classification filtering, GET /datasets/{id}/download
+│   ├── storage.py          ← Stage 5 (new): StorageProvider interface & LocalContentAddressableStorage implementation
+│   ├── models.py           ← Stage 5: Dataset updated with uploader_id, storage_path, download_count, description; User.datasets relationship
+│   ├── authorization.py    ← Stage 5: Classification hierarchy & clearance enforcement (can_user_access_classification)
+│   ├── database.py         ← unchanged
+│   ├── auth.py              ← unchanged
+│   └── security.py         ← unchanged
+├── storage/
+│   └── cas/                ← Stage 5 (new): Sharded physical file directory (cas/{hash[:2]}/{hash[2:4]}/{hash})
+├── alembic/
+│   └── versions/
+│       └── 35b83eeb6210_add_storage_and_metadata_to_datasets.py   ← Stage 5: schema updates for storage & metadata
+frontend/
+└── src/
+    └── App.jsx             ← Stage 5: Refined duplicate alert card with side-by-side comparison, "Use Existing vs. Proceed Anyway", classification picker, and dataset inventory table with authenticated downloads
+```
+
+### 11.2 Architectural Decisions
+
+1. **Content-Addressable Storage (CAS):**
+   - Rather than storing duplicate file bytes on disk or in object storage when users upload identical content, the physical file is stored keyed by its SHA-256 hash in a two-tier directory shard (`storage/cas/{sha256[:2]}/{sha256[2:4]}/{sha256}`).
+   - Writing is atomic (writes to temporary file first, then `os.replace` to prevent race conditions).
+   - If an identical file is uploaded or force-uploaded, CAS avoids redundant I/O and disk consumption (Single-Instance Storage).
+   - Abstract `StorageProvider` base class allows transparent transition to S3/MinIO in the future without changing route logic.
+
+2. **Refined Duplicate Resolution Workflow:**
+   - **Canonical Detection:** When a hash collision is detected, the API returns `duplicate: true` along with rich metadata of the existing canonical record (`id`, `filename`, `sha256`, `size_bytes`, `uploaded_at`, `classification`, `uploader_username`, `download_count`).
+   - **Use Existing (Acknowledge):** User can directly utilize or download the canonical file without redundant registration.
+   - **Proceed Anyway (Force Upload / Alias):** If the user passes `force=true`, the system registers a distinct `Dataset` row (preserving their chosen filename, owner, description, classification) while pointing to the identical CAS storage path.
+
+3. **Classification-Based RBAC Enforcement:**
+   - Spec hierarchy: `PUBLIC (0)` < `INTERNAL (1)` < `RESTRICTED (2)` < `CONFIDENTIAL (3)`.
+   - Role clearance limits:
+     - `ADMIN`: Level 3 (`PUBLIC`, `INTERNAL`, `RESTRICTED`, `CONFIDENTIAL`)
+     - `FACULTY` & `RESEARCHER`: Level 2 (`PUBLIC`, `INTERNAL`, `RESTRICTED`)
+     - `STUDENT`: Level 1 (`PUBLIC`, `INTERNAL`)
+     - `GUEST`: Level 0 (`PUBLIC` only)
+   - `GET /datasets` filters out datasets exceeding the caller's clearance level.
+   - `GET /datasets/{id}/download` validates both `dataset:download` permission and security clearance, raising `403 Forbidden` if clearance is insufficient.
+
+### 11.3 Database Schema & Migration (`35b83eeb6210`)
+
+- `datasets.uploader_id` — `Integer`, Foreign Key to `users.id` (nullable).
+- `datasets.storage_path` — `String` (nullable).
+- `datasets.download_count` — `Integer`, `server_default='0'`, `nullable=False`.
+- `datasets.description` — `String` (nullable).
+- `datasets.sha256` index — updated from `unique=True` to `unique=False` (enabling alias records for force-uploads).
+- Existing rows backfilled with `classification = 'INTERNAL'`.
+
+### 11.4 Verified Working (End-to-End)
+
+Verified via automated test script (`backend/test_stage5.py`) and UI workflow:
+1. **Signup & Login:** Authenticated session established with JWT.
+2. **Unique Upload:** File bytes stored in sharded CAS path; database record created with `uploader_id`, `storage_path`, and `download_count=0`.
+3. **Duplicate Alert Refinement:** Re-uploading identical bytes returned `duplicate: true` with rich canonical metadata (filename, uploader name, upload date, classification).
+4. **Force Upload / Alias Registration:** Force upload created a distinct dataset ID while sharing the existing CAS storage file.
+5. **Dataset Inventory Listing:** `GET /datasets` returns active inventory sorted by newest first.
+6. **Authenticated Streaming Download:** `GET /datasets/{id}/download` streams exact binary bytes with `Content-Disposition: attachment` and increments `download_count`.
+7. **Classification Security Gate:** A `CONFIDENTIAL` dataset is automatically hidden from `STUDENT` listings and returns `403 Forbidden` when a student attempts direct download.
+
+### 11.5 Not Yet Done / Deferred
+
+- Stage 6: Metadata similarity matching (beyond exact content hash).
+- Stage 7–9: Near-duplicate detection algorithms (TF-IDF, MinHash/SimHash, LSH).
+- Stage 10: Audit logging on access denials and download events.
