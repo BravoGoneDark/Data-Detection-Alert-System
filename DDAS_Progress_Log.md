@@ -1,8 +1,8 @@
 # DDAS — Detailed Technical Progress Log
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
-**Date:** August 17–18, 2026
-**Covers:** Stage 1 (Core Duplicate Detection) and Stage 2 (PostgreSQL Persistence)
+**Date:** August 17–21, 2026
+**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — now complete, including the animated auth UI), and Stage 4 (RBAC)
 
 ---
 
@@ -212,11 +212,13 @@ All terminal commands standardized to PowerShell syntax (as opposed to bash/Unix
 
 `Core DDAS → PostgreSQL → Authentication → RBAC → Duplicate Alerts → Metadata Similarity → TF-IDF/Cosine → MinHash/SimHash → LSH → Audit Logging → Bulk Download Detection → DLP → Security Dashboard → Advanced UI/Animation → C++ Optimization`
 
-Stage 3 (Authentication) is now in progress — see Section 9.
+Stage 3 (Authentication) — complete, see Section 9. Stage 4 (RBAC) — complete, see Section 10.
+
+**Open item before Stage 5 begins:** the system currently stores only file hash + metadata (filename, size, timestamp) in Postgres — never the actual file bytes. Real deployment will require object storage (S3-compatible or equivalent), with the DB row extended to hold a storage pointer. Not yet assigned to a specific stage — a decision is needed on whether to fold this into Stage 5 or make it its own explicit stage.
 
 ---
 
-## 9. Stage 3 — Authentication (In Progress)
+## 9. Stage 3 — Authentication (Complete)
 
 **Date:** August 18, 2026
 **Status:** User model, migration, and crypto helper module complete and verified. Signup/login endpoints and route protection still pending.
@@ -290,13 +292,143 @@ Added `JWT_SECRET_KEY` alongside the existing `DATABASE_URL`, following the iden
 2. `security.py`'s `SECRET_KEY` loads correctly from `.env` at runtime (confirmed by printing it via a direct Python one-liner — a real 64-character value, not `None`).
 3. Argon2 hashing/verification functions and JWT creation/decoding functions are written and import cleanly, but not yet exercised end-to-end through an actual HTTP request (no endpoints wired up yet).
 
-### 9.7 Not Yet Done (remaining Stage 3 work)
+### 9.7 Remaining Stage 3 Work — Completed
 
-- `auth.py` — actual `/auth/signup` and `/auth/login` FastAPI route endpoints, following the same inline-Pydantic-model convention established in `main.py` (no separate `schemas.py` file introduced yet).
-- Signup validation returning distinct `HTTPException` messages for a taken username vs. a taken email.
-- Login endpoint accepting a single identifier field (username or email) and returning a signed JWT on success.
-- A `get_current_user` FastAPI dependency that decodes the JWT from the `Authorization: Bearer <token>` header, for use in protecting routes.
-- Applying that dependency to `/datasets/upload`, making it require a logged-in user.
-- Frontend login/signup UI and token storage/attachment to requests.
-- Manual end-to-end verification: signup → login → receive token → call protected upload endpoint with and without a valid token.
-- Commit made for the completed portion of this work; the remainder above will follow in a subsequent commit once implemented.
+All items previously tracked here are now done and verified end-to-end:
+
+- `auth.py` implemented with `/auth/signup` and `/auth/login`, following the inline-Pydantic-model convention (no separate `schemas.py`).
+- Signup returns distinct `HTTPException` messages for a taken username vs. a taken email.
+- Login accepts a single `identifier` field (username or email, resolved via SQLAlchemy `or_()`) and returns a signed JWT.
+- `get_current_user` dependency implemented via plain `Header(None)` parsing (not `OAuth2PasswordBearer`) — decodes the `Authorization: Bearer <token>` header and loads the corresponding user.
+- Applied to `/datasets/upload`, requiring a logged-in user.
+- Frontend `AuthContext` built (localStorage-backed token state — flagged as a **deliberate, temporary** choice; migrating to in-memory/React-state-only before deployment remains an open XSS-hardening item), with `App.jsx` restructured into `AuthProvider → AuthenticationPage → UploadPanel`.
+- Upload requests attach the `Authorization: Bearer` header automatically and auto-logout on `401`.
+- Manually verified end-to-end: signup (auto-login) → login → protected upload with valid token succeeds → protected upload without a token / with an invalid token is rejected.
+
+**Debugging chain resolved during this stage** (kept here for interview-recall purposes):
+- Router-include-before-app-defined ordering bug.
+- Dropped lines in `upload_dataset` during an earlier edit.
+- `main.py` was mistakenly placed inside `app/` instead of at the `backend/` root — caused a silent `"could not import module main"` failure with no useful traceback, since uvicorn's module resolution depends on `main.py`'s exact location relative to the working directory.
+- A Swagger UI header-input bug (testing the `Authorization` header manually through `/docs`).
+- A stale-token-across-server-restart issue, caused by `--reload` restarting the app process (and thus its in-memory JWT secret handling) without the frontend re-authenticating.
+
+### 9.8 Animated Authentication UI — Scoped Styling Exception
+
+Although the project's styling work is formally deferred to Stage 14 (Advanced UI/Animation), a **one-time, explicitly scoped exception** was made to build a full cinematic auth experience — covering only the pre-login screen (background + modal), not the rest of the app.
+
+**Components built:**
+- `AuthenticationPage.jsx` — hard-gates the upload UI behind authentication (no dismissible overlay); bypasses entirely once `isAuthenticated` is true.
+- `AuthTrigger.jsx` — an animated lock icon (Motion) that "unlocks" (shackle animates open) on click before triggering the modal.
+- `AuthModal.jsx` — login/signup form with a Motion `layoutId`-based shared-element transform from the trigger, a spring-animated login/signup mode pill, animated field transitions, and a cyan/black "secure access" visual language.
+- `CyberBackground.jsx` — composited background, iterated significantly over the stage:
+  - **Initial version:** four independent layers — Unsplash-image parallax, an Anime.js SVG fluid-blob morph, a `@react-three/fiber`/drei WebGL wireframe geometry field (7 independently animated shapes), and a canvas-based particle/network system.
+  - **Current version (after iteration):** simplified to two layers — `MatrixSky` (a CSS/DOM digit-rain effect) and `TurbulentFlowingGrid` (a single `@react-three/fiber` wireframe plane whose vertices are displaced each frame via a sine/cosine function of position and time, and which tilts based on whether the modal is open), plus a centered `DDAS` branding panel. The four-layer version was judged too visually busy; this was a deliberate simplification, not a regression.
+- `FormField.jsx` — shared input component used by the modal (password visibility toggle, label styling).
+
+**New dependencies introduced:** `motion` (not the deprecated `framer-motion` package — per project convention), `animejs`, `three`, `@react-three/fiber`, `@react-three/drei`.
+
+**Outcome:** the auth UI was reviewed and explicitly accepted as final for now — no further visual iteration planned on this screen. The rest of the application (upload panel, future dashboards) remains unstyled, intentionally, until Stage 14.
+
+**Known open item carried forward:** the continuous-animation layers in `CyberBackground.jsx` (`MatrixSky`, `TurbulentFlowingGrid`) do not currently check `prefers-reduced-motion`, unlike the accessibility goal stated in the spec for Stage 14. To be addressed in a dedicated reduced-motion pass later, alongside the rest of the app's animations.
+
+---
+
+## 10. Stage 4 — RBAC (Role-Based Access Control) — Complete
+
+### 10.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── main.py             ← Stage 4: /datasets/upload now depends on require_permission()
+│   ├── database.py         ← unchanged this stage
+│   ├── models.py           ← Stage 4: added Role, Permission, role_permissions join table;
+│   │                          User gained role_id (FK) + role relationship;
+│   │                          Dataset gained classification column (unused so far)
+│   ├── auth.py              ← Stage 4: signup() now explicitly assigns the STUDENT role
+│   ├── authorization.py    ← Stage 4 (new): user_has_permission() + require_permission()
+│   └── security.py         ← unchanged this stage
+├── alembic/
+│   └── versions/
+│       └── ef72dd21ef93_add_rbac_tables.py   ← Stage 4: roles/permissions/role_permissions
+│                                                  tables, users.role_id, datasets.classification,
+│                                                  seed data, existing-user backfill
+```
+
+### 10.2 Concept: Why Permissions, Not Hardcoded Role Checks
+
+The naive approach — `if user.role == "admin"` scattered through route handlers — was deliberately avoided. Instead, RBAC here is built as a **permission-matrix lookup**:
+
+- A **role** (`ADMIN`, `FACULTY`, `RESEARCHER`, `STUDENT`, `GUEST`) is just a named bundle of **permissions** (`dataset:view`, `dataset:upload`, `audit:view`, `user:manage`, etc.).
+- Routes never reference role names directly. A route declares the *permission* it requires (e.g. `dataset:upload`), and a single reusable dependency checks whether the current user's role grants that permission.
+- This means changing what a role can do is a **data change** (editing rows in `role_permissions`), not a **code change** — and adding an entirely new role later requires no route code to be touched at all.
+
+This design matches the spec's explicit RBAC section (roles + permissions + a `role_permissions` join table, rather than a single `role` string column on `users`), chosen deliberately over the simpler string-column approach for a stronger interview story ("I implemented RBAC as a permission lookup, not role comparisons").
+
+### 10.3 Database Design
+
+Four schema changes, in one migration:
+
+- **`roles`** — `id`, `name` (unique), `description`. Seeded with `ADMIN`, `FACULTY`, `RESEARCHER`, `STUDENT`, `GUEST`.
+- **`permissions`** — `id`, `name` (unique), `description`. Seeded with `dataset:view`, `dataset:download`, `dataset:upload`, `dataset:delete`, `dataset:modify`, `dataset:manage_access`, `audit:view`, `security:view`, `user:manage`, `alert:manage`.
+- **`role_permissions`** — pure join table (`role_id`, `permission_id` composite primary key), no extra columns. Modeled in SQLAlchemy as a plain `Table`, not a mapped class, since it carries no data of its own beyond the two foreign keys.
+- **`users.role_id`** — new foreign key to `roles.id`. Added as **nullable** initially, backfilled to STUDENT for all pre-existing rows, then altered to `NOT NULL` — necessary ordering, since adding a `NOT NULL` column directly against a table with existing rows would fail immediately.
+- **`datasets.classification`** — added now (nullable, unused) to avoid a second migration when Stage 5 introduces classification-based access rules (`PUBLIC` / `INTERNAL` / `RESTRICTED` / `CONFIDENTIAL`, per the spec's Dataset Classification section). No enforcement logic reads this column yet.
+
+**Seeded role → permission mapping** (a reasonable default, not spec-mandated):
+
+| Role | Permissions |
+|---|---|
+| ADMIN | all ten |
+| FACULTY | `dataset:view`, `dataset:download`, `dataset:upload`, `dataset:modify`, `audit:view` |
+| RESEARCHER | `dataset:view`, `dataset:download`, `dataset:upload` |
+| STUDENT | `dataset:view`, `dataset:download`, `dataset:upload` |
+| GUEST | `dataset:view` only |
+
+New signups default to `STUDENT`. Promotion to other roles is manual (direct DB update) for now — no self-service role picker at signup, and no admin UI for role management yet (that's a later-stage concern).
+
+### 10.4 `app/authorization.py` (New)
+
+Two functions:
+- `user_has_permission(user, permission)` — checks whether `permission` is present in `user.role.permissions` (a lazy-loaded SQLAlchemy relationship).
+- `require_permission(permission)` — a **dependency factory**: takes a permission string and returns a FastAPI dependency that wraps `get_current_user`, checks the permission, raises `403` if missing, and otherwise returns the user — making it a drop-in replacement for `get_current_user` on any route that needs a specific permission rather than just "logged in."
+
+Applied to `/datasets/upload` as `Depends(require_permission("dataset:upload"))`, replacing the plain `Depends(get_current_user)` used since Stage 3.
+
+**Mechanical note:** `require_permission`'s inner check accesses `current_user.role.permissions` *after* `get_current_user` has already returned — this works without an extra explicit `db` dependency because FastAPI caches `Depends(get_db)` per-request, so `get_current_user` and the permission check share the same open SQLAlchemy session, allowing the lazy relationship load to succeed.
+
+### 10.5 Migration Workflow
+
+Same pattern as Stage 2/3, with one addition — seed data and a backfill step, since autogenerate only detects schema shape, not data:
+
+1. Added `Role`, `Permission`, `role_permissions`, and the `User.role_id` / `Dataset.classification` changes to `models.py`.
+2. Ran `alembic revision --autogenerate -m "add rbac tables"`, reviewed the generated script.
+3. **Manually added** (autogenerate does not produce this): seed inserts for the five roles and ten permissions, the role→permission mapping inserts, and an `UPDATE users SET role_id = <student_id>` backfill — executed *before* `op.alter_column('users', 'role_id', nullable=False)`, so the ordering never violates the not-null constraint against existing rows.
+4. Ran `alembic upgrade head`.
+5. Verified directly via `psql` (`docker exec -it ddas_postgres psql -U ddas_user -d ddas_db`): confirmed 5 roles, 10 permissions, the full role→permission join, and all pre-existing users backfilled to STUDENT's `role_id`.
+
+### 10.6 Issues Encountered and Resolved
+
+| Issue | Cause | Resolution |
+|---|---|---|
+| `alembic` not recognized as a command | The project's venv wasn't activated in the current PowerShell session | Activated venv (`.\venv\Scripts\Activate.ps1`); confirmed `python -m alembic ...` as a PATH-independent fallback |
+| `NameError: name 'Table' is not defined` when running `alembic revision --autogenerate` | `models.py`'s top-level `sqlalchemy` import wasn't updated to include `Table` and `ForeignKey` when the new `Role`/`Permission`/join-table code was added | Updated the import line to include `ForeignKey, Table`, plus `from sqlalchemy.orm import relationship` |
+| Browser showed generic `"Failed to fetch"` on signup, with no HTTP status | Backend traceback (visible in the uvicorn terminal, not the browser) revealed the real cause below — the browser's `fetch()` never got a response because the backend process crashed handling the request | See below |
+| `psycopg2.errors.NotNullViolation: null value in column "role_id"` on every new signup | The migration correctly backfilled *existing* users to STUDENT, but `auth.py`'s `signup()` function was never updated to set `role_id` when constructing a **new** `User` — so every new signup attempted to insert a null into a NOT NULL column | Updated `signup()` to look up the `STUDENT` role and pass `role_id=student_role.id` explicitly when constructing the new user |
+| `ImportError: cannot import name 'User' from partially initialized module 'app.models' (circular import)` | A `from app.models import User, Role` line — intended for `auth.py` (which needed `Role` to look up the default role) — was instead pasted into `models.py` itself, causing `models.py` to try importing from itself | Removed the stray line from `models.py`; confirmed the correct import exists in `auth.py` instead |
+
+**Debugging insight worth keeping:** the `"Failed to fetch"` browser error was a red herring on its own — it only means the network request never completed, and gives no indication of *why*. The real diagnostic signal was the backend's own terminal output (the unhandled exception traceback from uvicorn), not anything visible in the browser. This is a useful pattern to remember for future stages: when the frontend shows a generic network failure, check the backend terminal before the browser console.
+
+### 10.7 Verified Working (end-to-end)
+
+1. Migration applied cleanly; `roles`, `permissions`, `role_permissions` tables confirmed correct via direct `psql` inspection; all pre-existing users confirmed backfilled to STUDENT.
+2. **Normal path:** a STUDENT-role user can sign up, log in, and successfully upload a file — `require_permission("dataset:upload")` allows the request through, response unchanged from Stage 3's behavior.
+3. **Enforcement path:** the same authenticated user, demoted to GUEST directly in the database (no logout/re-login needed), is correctly **blocked** — `/datasets/upload` returns `403` with `"Missing required permission: dataset:upload"`. Confirms permission checks are evaluated fresh from the database on every request rather than cached in the JWT.
+4. Confirms the authorization layer is real enforcement, not just schema scaffolding.
+
+### 10.8 Not Yet Done / Deferred
+
+- Classification-based access enforcement (`datasets.classification` column exists but nothing reads it yet) — deliberately deferred to Stage 5, once dataset retrieval/listing endpoints exist to meaningfully gate.
+- Admin UI for managing roles/permissions or reassigning users — role changes remain a manual DB operation for now.
+- Audit event creation on a `403` denial (spec's RBAC flow diagram includes "Deny + Audit Event") — audit logging itself is Stage 10; this stage only implements the deny, not the logging of it.
+- Self-service role requests or a role selector at signup — explicitly out of scope; new users always default to STUDENT.
