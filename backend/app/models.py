@@ -28,6 +28,8 @@ class Dataset(Base):
     row_count = Column(Integer, nullable=True)
     col_count = Column(Integer, nullable=True)
     mime_type = Column(String, nullable=True)
+    text_preview = Column(String, nullable=True)   # First 500 chars / summary of content
+    top_keywords_json = Column(String, nullable=True)  # JSON-serialized list of top TF-IDF keywords
 
     uploader = relationship("User", back_populates="datasets")
 

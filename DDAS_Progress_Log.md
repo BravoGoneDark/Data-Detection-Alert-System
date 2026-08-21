@@ -2,7 +2,7 @@
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
 **Date:** August 17–21, 2026
-**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), and Stage 6 (Metadata & Structural Similarity Matching)
+**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), Stage 6 (Metadata & Structural Similarity Matching), and Stage 7 (TF-IDF & Cosine Similarity Content Matching)
 
 ---
 
@@ -584,7 +584,80 @@ Verified via automated test suite `verify_metadata_similarity.py`:
 
 ### 12.6 Not Yet Done / Deferred
 
-- Stage 7: TF-IDF / Cosine similarity (analyzing text content distribution).
+- Stage 7: TF-IDF / Cosine similarity — completed in Stage 7.
 - Stage 8: MinHash / SimHash (fuzzy n-gram / shingles fingerprinting).
 - Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity search).
 - Stage 10: Audit logging.
+
+---
+
+## 13. Stage 7 — TF-IDF & Cosine Similarity Content Matching — Complete
+
+### 13.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── tfidf_engine.py        ← Stage 7 (new): Text tokenization, stop-word filter, sublinear TF-IDF vectorizer, cosine similarity, salient keywords
+│   ├── metadata_extractor.py  ← Stage 6: CSV/JSON/text schema and row extraction
+│   ├── similarity.py          ← Stage 6: Metadata multi-attribute similarity
+│   ├── main.py                ← Stage 7: Tri-tier duplicate detection (EXACT vs METADATA_SIMILAR vs CONTENT_SIMILAR)
+│   ├── models.py              ← Stage 7: Added text_preview and top_keywords_json to Dataset
+│   ├── storage.py             ← Content-Addressable Storage (CAS)
+│   ├── authorization.py       ← RBAC & Classification clearances
+│   ├── database.py            ← SQLAlchemy database session
+│   ├── auth.py                ← JWT authentication routes
+│   └── security.py            ← Password hashing and JWT helpers
+├── alembic/
+│   └── versions/
+│       ├── 1648add5d368_add_tfidf_content_columns_to_datasets.py ← Stage 7: migration for text_preview and top_keywords_json
+│       └── e799d8505dcd_add_metadata_columns_to_datasets.py     ← Stage 6
+├── verify_cas_and_rbac.py     ← Stage 5 verification test suite
+├── verify_metadata_similarity.py ← Stage 6 verification test suite
+└── verify_tfidf_content_similarity.py ← Stage 7 verification test suite
+frontend/
+└── src/
+    └── App.jsx                ← Stage 7: Tri-tier duplicate alert card (Plagiarism/Content overlap badge with #keyword tags and text preview diff) + inventory keyword tags
+```
+
+### 13.2 Concept: Semantic Plagiarism & Vocabulary Distribution Matching
+
+While cryptographic hashing (Stage 5) detects 100% exact byte collisions and metadata scoring (Stage 6) detects structural schema matches, **Stage 7 inspects document text payload**:
+- If an author or user rephrases sentences, alters paragraph ordering, or renames dataset files, the byte hash and filename change completely, but the **underlying terminology, domain keywords, and term frequency distribution remain nearly identical**.
+- **TF-IDF Engine:**
+  1. Tokenizes text into normalized words, removes standard English stop words and punctuation.
+  2. Computes Euclidean-normalized sublinear Term Frequency vectors:
+     $$\text{TF}(t) = 1 + \ln(\text{count}(t)), \quad \|\vec{v}\|_2 = 1.0$$
+  3. Computes geometric angle via sparse dot product:
+     $$\text{Cosine Similarity}(\vec{u}, \vec{v}) = \sum_{t \in \vec{u} \cap \vec{v}} u_t \cdot v_t \in [0.0, 1.0]$$
+  4. Extracts top salient vocabulary terms and intersecting vocabulary between candidate documents.
+
+### 13.3 Database Design & Migration (`1648add5d368`)
+
+Two new columns added to `datasets`:
+- `text_preview` (`String`, nullable): First 300–500 characters / summary of text payload for preview and inspection.
+- `top_keywords_json` (`String`, nullable): JSON-serialized list of the top 5 salient TF-IDF keywords.
+
+### 13.4 Tri-Tier Duplicate Alert System (Frontend & API)
+
+`POST /datasets/upload` evaluates incoming uploads across three prioritized tiers:
+1. **Tier 1 — Exact Cryptographic Collision (`EXACT`):** 100% SHA-256 hash match (Amber badge).
+2. **Tier 2 — High Content Overlap / Plagiarism (`CONTENT_SIMILAR`):** Cosine Similarity $\ge 60.0\%$ (Purple/Fuchsia badge, shared `#keyword` tags, side-by-side text preview).
+3. **Tier 3 — Structural & Schema Overlap (`METADATA_SIMILAR`):** Multi-attribute score $\ge 70.0\%$ (Cyan badge, metric breakdown progress bars, column inspector).
+
+### 13.5 Verified Working (End-to-End)
+
+Verified via automated test suite `verify_tfidf_content_similarity.py`:
+1. **Salient Keyword Extraction:** Correctly extracted high-weight domain keywords on upload.
+2. **Plagiarism / Paraphrasing Detection:** Uploading a paraphrased report with a different filename and different hash triggered `match_type: "CONTENT_SIMILAR"` with a **64.3% Cosine Similarity score** and identified shared vocabulary keywords (`#networks`, `#cortex`, `#potentiation`, `#cortical`, `#synaptic`, `#memory`).
+3. **Exact Collision Catch:** Exact content upload returned `match_type: "EXACT"` with 100.0% score.
+4. **Force Upload Override:** Overrode duplicate warning with `force=true` and registered the new variant in PostgreSQL.
+5. **Inventory Display:** `GET /datasets` confirmed `top_keywords` and `text_preview` returned in dataset list.
+6. **Download:** `GET /datasets/{id}/download` streamed exact file bytes.
+
+### 13.6 Not Yet Done / Deferred
+
+- Stage 8: MinHash / SimHash (fuzzy n-gram / shingles fingerprinting for massive corpora).
+- Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity search).
+- Stage 10: Audit logging on access denials and download events.
+- Stage 14: Comprehensive inner application UI & dashboard redesign.

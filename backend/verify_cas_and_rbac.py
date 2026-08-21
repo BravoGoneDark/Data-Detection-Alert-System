@@ -80,17 +80,18 @@ def run_tests():
     print(f"[OK] Created user {username} with token")
 
     print("\n=== 2. Testing Unique Upload (CAS Storage & Metadata) ===")
-    test_content = f"Unique dataset payload {timestamp} - sample data line".encode("utf-8")
+    fname_cas = f"test_data_{timestamp}.csv"
+    test_content = f"record_id_{timestamp},metric_val_{timestamp},tag_{timestamp}\n1,99.5,alpha\n2,88.1,beta\n".encode("utf-8")
     body, ct = encode_multipart_formdata(
         {"classification": "INTERNAL", "description": "Test dataset v1"},
-        {"file": ("test_data.csv", test_content, "text/csv")}
+        {"file": (fname_cas, test_content, "text/csv")}
     )
     h_upload = headers.copy()
     h_upload["Content-Type"] = ct
     status, res = make_request("POST", "/datasets/upload", data=body, headers=h_upload, is_json=False)
     assert status == 200, f"Upload failed ({status}): {res.decode('utf-8')}"
     upload_json = json.loads(res.decode("utf-8"))
-    assert upload_json["duplicate"] is False, "Expected duplicate=False for first upload"
+    assert upload_json["duplicate"] is False, f"Expected duplicate=False for first upload, got: {upload_json}"
     dataset_id = upload_json["id"]
     sha256 = upload_json["sha256"]
     print(f"[OK] Unique upload succeeded (ID: {dataset_id}, SHA: {sha256[:16]}...)")
@@ -98,16 +99,16 @@ def run_tests():
     print("\n=== 3. Testing Duplicate Alert (Rich Existing Metadata) ===")
     body_dup, ct_dup = encode_multipart_formdata(
         {"classification": "INTERNAL"},
-        {"file": ("another_name.csv", test_content, "text/csv")}
+        {"file": (f"another_name_{timestamp}.csv", test_content, "text/csv")}
     )
     h_dup = headers.copy()
     h_dup["Content-Type"] = ct_dup
     status, res = make_request("POST", "/datasets/upload", data=body_dup, headers=h_dup, is_json=False)
-    assert status == 200, f"Duplicate check failed ({status}): {res.decode('utf-8')}"
+    assert status == 200
     dup_json = json.loads(res.decode("utf-8"))
-    assert dup_json["duplicate"] is True, "Expected duplicate=True"
-    assert dup_json["existing"] is not None, "Expected rich existing metadata"
-    assert dup_json["existing"]["filename"] == "test_data.csv"
+    assert dup_json["duplicate"] is True
+    assert dup_json["existing"]["id"] == dataset_id
+    assert dup_json["existing"]["filename"] == fname_cas
     assert dup_json["existing"]["uploader_username"] == username
     print(f"[OK] Duplicate alert correctly returned existing canonical metadata (Canonical: {dup_json['existing']['filename']}, Uploader: {dup_json['existing']['uploader_username']})")
 

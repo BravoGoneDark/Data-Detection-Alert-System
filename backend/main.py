@@ -14,6 +14,14 @@ from app.authorization import require_permission, can_user_access_classification
 from app.storage import get_storage
 from app.metadata_extractor import extract_metadata, ExtractedMetadata
 from app.similarity import compute_metadata_similarity, parse_db_columns
+from app.tfidf_engine import (
+    extract_text_content,
+    tokenize,
+    build_tfidf_vector,
+    compute_cosine_similarity,
+    get_top_keywords,
+    get_shared_keywords,
+)
 
 app = FastAPI(title="DDAS - Data Duplicate Analysis System")
 
@@ -55,6 +63,8 @@ class ExistingDataset(BaseModel):
     row_count: int | None = None
     col_count: int | None = None
     mime_type: str | None = None
+    top_keywords: list[str] = []
+    text_preview: str | None = None
 
     class Config:
         from_attributes = True
@@ -66,13 +76,16 @@ class UploadResult(BaseModel):
     sha256: str
     size_bytes: int
     duplicate: bool
-    match_type: str = "UNIQUE"  # "UNIQUE", "EXACT", "METADATA_SIMILAR"
+    match_type: str = "UNIQUE"  # "UNIQUE", "EXACT", "METADATA_SIMILAR", "CONTENT_SIMILAR"
     similarity_score: float = 0.0
     score_breakdown: ScoreBreakdown | None = None
     classification: str | None = None
     extracted_columns: list[str] = []
     row_count: int | None = None
     col_count: int | None = None
+    top_keywords: list[str] = []
+    shared_keywords: list[str] = []
+    text_preview: str | None = None
     existing: ExistingDataset | None = None
 
 
@@ -90,6 +103,8 @@ class DatasetOut(BaseModel):
     row_count: int | None = None
     col_count: int | None = None
     mime_type: str | None = None
+    top_keywords: list[str] = []
+    text_preview: str | None = None
 
     class Config:
         from_attributes = True
@@ -99,6 +114,16 @@ def compute_sha256(file_bytes: bytes) -> str:
     hasher = hashlib.sha256()
     hasher.update(file_bytes)
     return hasher.hexdigest()
+
+
+def parse_keywords_json(json_str: str | None) -> list[str]:
+    if not json_str:
+        return []
+    try:
+        data = json.loads(json_str)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
 
 @app.post("/datasets/upload", response_model=UploadResult)
@@ -113,10 +138,15 @@ async def upload_dataset(
     file_bytes = await file.read()
     file_hash = compute_sha256(file_bytes)
 
-    # 1. Extract structural schema & metadata
+    # 1. Extract structural schema & text content
     meta = extract_metadata(file.filename, file_bytes)
+    raw_text = extract_text_content(file.filename, file_bytes)
+    tokens = tokenize(raw_text)
+    tfidf_vec = build_tfidf_vector(tokens)
+    top_kw = get_top_keywords(tfidf_vec, top_n=5)
+    text_preview = (raw_text[:300] + "...") if len(raw_text) > 300 else raw_text
 
-    # 2. Check for exact SHA-256 duplicate
+    # 2. Check for exact SHA-256 duplicate (Tier 1: Cryptographic Hash)
     existing_exact = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
 
     if existing_exact and not force:
@@ -135,6 +165,8 @@ async def upload_dataset(
             row_count=existing_exact.row_count,
             col_count=existing_exact.col_count,
             mime_type=existing_exact.mime_type,
+            top_keywords=parse_keywords_json(existing_exact.top_keywords_json),
+            text_preview=existing_exact.text_preview,
         )
         return UploadResult(
             id=None,
@@ -154,21 +186,32 @@ async def upload_dataset(
             extracted_columns=meta.columns,
             row_count=meta.row_count,
             col_count=meta.col_count,
+            top_keywords=top_kw,
+            shared_keywords=top_kw,
+            text_preview=text_preview,
             existing=existing_info,
         )
 
-    # 3. If no exact match and not force, run multi-attribute metadata similarity comparison
+    # 3. Check for Metadata & Content Similarity (Tier 2 & Tier 3)
     if not force:
         all_candidates = db.query(Dataset).all()
-        best_candidate = None
-        best_score = 0.0
-        best_breakdown = None
+        storage = get_storage()
+
+        best_meta_candidate = None
+        best_meta_score = 0.0
+        best_meta_breakdown = None
+
+        best_content_candidate = None
+        best_content_score = 0.0
+        best_shared_keywords = []
 
         for candidate in all_candidates:
-            if not can_user_access_classification(current_user, candidate.classification):
+            if candidate.uploader_id != current_user.id and not can_user_access_classification(current_user, candidate.classification):
                 continue
+
+            # (A) Check Structural / Metadata Similarity
             cand_cols = parse_db_columns(candidate.columns_json)
-            score, breakdown = compute_metadata_similarity(
+            meta_score, breakdown = compute_metadata_similarity(
                 file.filename,
                 meta,
                 len(file_bytes),
@@ -177,28 +220,87 @@ async def upload_dataset(
                 candidate.row_count,
                 candidate.size_bytes,
             )
-            if score > best_score:
-                best_score = score
-                best_candidate = candidate
-                best_breakdown = breakdown
+            if meta_score > best_meta_score:
+                best_meta_score = meta_score
+                best_meta_candidate = candidate
+                best_meta_breakdown = breakdown
 
-        # If similarity exceeds threshold (70.0%), alert as metadata near-duplicate
-        if best_candidate and best_score >= 70.0:
-            uploader_name = best_candidate.uploader.username if best_candidate.uploader else "System"
+            # (B) Check TF-IDF Cosine Similarity on Content (if tokens exist)
+            if tfidf_vec and candidate.storage_path and storage.file_exists(candidate.storage_path):
+                cand_bytes = storage.read_file(candidate.storage_path)
+                cand_text = extract_text_content(candidate.filename, cand_bytes)
+                cand_tokens = tokenize(cand_text)
+                cand_vec = build_tfidf_vector(cand_tokens)
+
+                cosine_sim = compute_cosine_similarity(tfidf_vec, cand_vec)
+                if cosine_sim > best_content_score:
+                    best_content_score = cosine_sim
+                    best_content_candidate = candidate
+                    best_shared_keywords = get_shared_keywords(tfidf_vec, cand_vec, top_n=6)
+
+        # Priority 1: High Content Cosine Similarity (>= 60.0%) -> Plagiarism / Content Match
+        if best_content_candidate and best_content_score >= 60.0:
+            uploader_name = best_content_candidate.uploader.username if best_content_candidate.uploader else "System"
             existing_info = ExistingDataset(
-                id=best_candidate.id,
-                filename=best_candidate.filename,
-                sha256=best_candidate.sha256,
-                size_bytes=best_candidate.size_bytes,
-                uploaded_at=best_candidate.uploaded_at,
-                classification=best_candidate.classification or "INTERNAL",
+                id=best_content_candidate.id,
+                filename=best_content_candidate.filename,
+                sha256=best_content_candidate.sha256,
+                size_bytes=best_content_candidate.size_bytes,
+                uploaded_at=best_content_candidate.uploaded_at,
+                classification=best_content_candidate.classification or "INTERNAL",
                 uploader_username=uploader_name,
-                download_count=best_candidate.download_count,
-                description=best_candidate.description,
-                columns=parse_db_columns(best_candidate.columns_json),
-                row_count=best_candidate.row_count,
-                col_count=best_candidate.col_count,
-                mime_type=best_candidate.mime_type,
+                download_count=best_content_candidate.download_count,
+                description=best_content_candidate.description,
+                columns=parse_db_columns(best_content_candidate.columns_json),
+                row_count=best_content_candidate.row_count,
+                col_count=best_content_candidate.col_count,
+                mime_type=best_content_candidate.mime_type,
+                top_keywords=parse_keywords_json(best_content_candidate.top_keywords_json),
+                text_preview=best_content_candidate.text_preview,
+            )
+            return UploadResult(
+                id=None,
+                filename=file.filename,
+                sha256=file_hash,
+                size_bytes=len(file_bytes),
+                duplicate=True,
+                match_type="CONTENT_SIMILAR",
+                similarity_score=best_content_score,
+                score_breakdown=ScoreBreakdown(**(best_meta_breakdown or {
+                    "filename_similarity": 0.0,
+                    "schema_similarity": 0.0,
+                    "size_proximity": 0.0,
+                    "row_proximity": 0.0,
+                })),
+                classification=classification,
+                extracted_columns=meta.columns,
+                row_count=meta.row_count,
+                col_count=meta.col_count,
+                top_keywords=top_kw,
+                shared_keywords=best_shared_keywords,
+                text_preview=text_preview,
+                existing=existing_info,
+            )
+
+        # Priority 2: High Metadata / Structural Similarity (>= 70.0%)
+        if best_meta_candidate and best_meta_score >= 70.0:
+            uploader_name = best_meta_candidate.uploader.username if best_meta_candidate.uploader else "System"
+            existing_info = ExistingDataset(
+                id=best_meta_candidate.id,
+                filename=best_meta_candidate.filename,
+                sha256=best_meta_candidate.sha256,
+                size_bytes=best_meta_candidate.size_bytes,
+                uploaded_at=best_meta_candidate.uploaded_at,
+                classification=best_meta_candidate.classification or "INTERNAL",
+                uploader_username=uploader_name,
+                download_count=best_meta_candidate.download_count,
+                description=best_meta_candidate.description,
+                columns=parse_db_columns(best_meta_candidate.columns_json),
+                row_count=best_meta_candidate.row_count,
+                col_count=best_meta_candidate.col_count,
+                mime_type=best_meta_candidate.mime_type,
+                top_keywords=parse_keywords_json(best_meta_candidate.top_keywords_json),
+                text_preview=best_meta_candidate.text_preview,
             )
             return UploadResult(
                 id=None,
@@ -207,12 +309,15 @@ async def upload_dataset(
                 size_bytes=len(file_bytes),
                 duplicate=True,
                 match_type="METADATA_SIMILAR",
-                similarity_score=best_score,
-                score_breakdown=ScoreBreakdown(**best_breakdown),
+                similarity_score=best_meta_score,
+                score_breakdown=ScoreBreakdown(**best_meta_breakdown),
                 classification=classification,
                 extracted_columns=meta.columns,
                 row_count=meta.row_count,
                 col_count=meta.col_count,
+                top_keywords=top_kw,
+                shared_keywords=[],
+                text_preview=text_preview,
                 existing=existing_info,
             )
 
@@ -220,7 +325,7 @@ async def upload_dataset(
     storage = get_storage()
     storage_path = storage.save_file(file_hash, file_bytes)
 
-    # 5. Insert dataset record with metadata into Postgres
+    # 5. Insert dataset record with metadata & TF-IDF keywords into Postgres
     new_dataset = Dataset(
         filename=file.filename,
         sha256=file_hash,
@@ -234,6 +339,8 @@ async def upload_dataset(
         row_count=meta.row_count,
         col_count=meta.col_count,
         mime_type=meta.mime_type,
+        text_preview=text_preview,
+        top_keywords_json=json.dumps(top_kw) if top_kw else None,
     )
     db.add(new_dataset)
     db.commit()
@@ -251,6 +358,9 @@ async def upload_dataset(
         extracted_columns=meta.columns,
         row_count=meta.row_count,
         col_count=meta.col_count,
+        top_keywords=top_kw,
+        shared_keywords=[],
+        text_preview=text_preview,
         existing=None,
     )
 
@@ -280,6 +390,8 @@ async def list_datasets(
                     row_count=d.row_count,
                     col_count=d.col_count,
                     mime_type=d.mime_type,
+                    top_keywords=parse_keywords_json(d.top_keywords_json),
+                    text_preview=d.text_preview,
                 )
             )
     return results
