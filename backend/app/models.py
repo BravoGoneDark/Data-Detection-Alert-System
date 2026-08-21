@@ -24,6 +24,10 @@ class Dataset(Base):
     storage_path = Column(String, nullable=True)
     download_count = Column(Integer, default=0, nullable=False)
     description = Column(String, nullable=True)
+    columns_json = Column(String, nullable=True)   # JSON-serialized list of column names
+    row_count = Column(Integer, nullable=True)
+    col_count = Column(Integer, nullable=True)
+    mime_type = Column(String, nullable=True)
 
     uploader = relationship("User", back_populates="datasets")
 

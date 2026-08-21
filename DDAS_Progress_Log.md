@@ -2,7 +2,7 @@
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
 **Date:** August 17–21, 2026
-**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), and Stage 5 (Content-Addressable Storage, Duplicate Alert Refinement, Classification-based Access Control)
+**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), and Stage 6 (Metadata & Structural Similarity Matching)
 
 ---
 
@@ -504,6 +504,87 @@ Verified via automated test script (`backend/test_stage5.py`) and UI workflow:
 
 ### 11.5 Not Yet Done / Deferred
 
-- Stage 6: Metadata similarity matching (beyond exact content hash).
+- Stage 6: Metadata similarity matching — completed in Stage 6.
 - Stage 7–9: Near-duplicate detection algorithms (TF-IDF, MinHash/SimHash, LSH).
 - Stage 10: Audit logging on access denials and download events.
+
+---
+
+## 12. Stage 6 — Metadata & Structural Similarity Matching — Complete
+
+### 12.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── metadata_extractor.py  ← Stage 6 (new): CSV/JSON/text schema, column, row & mime extraction
+│   ├── similarity.py          ← Stage 6 (new): Levenshtein distance, Jaccard schema overlap, size proximity, composite scoring
+│   ├── main.py                ← Stage 6: Multi-attribute similarity pipeline, tiered duplicate responses, metadata-enriched output
+│   ├── models.py              ← Stage 6: Dataset columns (columns_json, row_count, col_count, mime_type)
+│   ├── storage.py             ← unchanged
+│   ├── authorization.py       ← unchanged
+│   ├── database.py            ← unchanged
+│   ├── auth.py                ← unchanged
+│   └── security.py            ← unchanged
+├── alembic/
+│   └── versions/
+│       └── e799d8505dcd_add_metadata_columns_to_datasets.py   ← Stage 6: migration for schema metadata columns
+├── verify_cas_and_rbac.py     ← Stage 5 verification test suite
+└── verify_metadata_similarity.py← Metadata & structural similarity verification suite
+frontend/
+└── src/
+    └── App.jsx                ← Stage 6: Tiered duplicate alert card (Exact Hash vs Metadata Similar), animated similarity breakdown meters, side-by-side schema column diff inspector, and schema-enriched dataset inventory table
+```
+
+### 12.2 Concept: Beyond Exact Cryptographic Hashing
+
+Prior to Stage 6, duplicate detection was strictly binary via SHA-256:
+- A single byte change caused an avalanche effect, masking duplicate intent when filenames, column schemas, and file shapes were otherwise identical.
+- **Stage 6 Solution:** Multi-Attribute Metadata & Structural Similarity Scoring comparing 4 key dimensions:
+
+1. **Filename Similarity ($S_{\text{name}}$):**
+   - Hybrid normalized Levenshtein edit distance + token Jaccard similarity across cleaned word stems.
+2. **Schema & Column Overlap ($S_{\text{schema}}$):**
+   - Set Jaccard index: $J(A, B) = \frac{|A \cap B|}{|A \cup B|}$ on normalized, lowercased column header sets.
+3. **File Size Proximity ($S_{\text{size}}$):**
+   - Linear ratio: $1 - \frac{|S_1 - S_2|}{\max(S_1, S_2)}$.
+4. **Dimension / Row Count Alignment ($S_{\text{rows}}$):**
+   - Proximity ratio between row counts.
+
+**Composite Formula:**
+$$\text{Score} = 0.35 \cdot S_{\text{name}} + 0.35 \cdot S_{\text{schema}} + 0.15 \cdot S_{\text{size}} + 0.15 \cdot S_{\text{rows}}$$
+
+When the composite score is $\ge 70.0\%$ (configurable threshold), the system flags the upload as a `METADATA_SIMILAR` duplicate before saving duplicate physical bytes.
+
+### 12.3 Database Design & Migration (`e799d8505dcd`)
+
+Four new columns added to `datasets`:
+- `columns_json` (`String`, nullable): JSON array of extracted column names.
+- `row_count` (`Integer`, nullable): Number of data rows (excluding header).
+- `col_count` (`Integer`, nullable): Number of columns.
+- `mime_type` (`String`, nullable): Guessed MIME type / format (`text/csv`, `application/json`, etc.).
+
+### 12.4 Interactive Frontend Tiering & Inspection
+
+- **Exact Duplicate (`100% HASH MATCH`):** Amber badge indicating 100% byte-for-byte collision.
+- **Metadata Duplicate (`X% SIMILAR`):** Cyan animated badge displaying composite similarity score.
+- **Visual Metric Meters:** Live breakdown progress bars for Filename Match, Schema Overlap, File Size Proximity, and Row Alignment.
+- **Side-by-Side Schema Column Diff Inspector:** Displays extracted columns with shared tags (`✓`) and unique tags (`+`).
+- **Enriched Inventory Table:** Displays format badges (`CSV`, `JSON`), column count, and row count pills.
+
+### 12.5 Verified Working (End-to-End)
+
+Verified via automated test suite `verify_metadata_similarity.py`:
+1. **Schema Extraction:** CSV parser accurately extracted headers (`5 columns`) and counted data rows (`40 rows`).
+2. **Metadata Similarity Catch:** Re-upload of an edited CSV with modified row bytes and 1 extra column triggered `match_type: "METADATA_SIMILAR"` with an **88.0% similarity score** (Filename 95.8%, Schema 83.3%, Size 73.4%).
+3. **Exact Collision Catch:** Exact content upload returned `match_type: "EXACT"` with 100.0% score.
+4. **Force Upload / Alias Override:** Overrode duplicate warning with `force=true` and registered the new variant in PostgreSQL.
+5. **Inventory Schema Presentation:** `GET /datasets` confirmed `columns`, `row_count`, `col_count`, and `mime_type` returned in dataset list.
+6. **Streaming Download:** `GET /datasets/{id}/download` streamed exact file bytes.
+
+### 12.6 Not Yet Done / Deferred
+
+- Stage 7: TF-IDF / Cosine similarity (analyzing text content distribution).
+- Stage 8: MinHash / SimHash (fuzzy n-gram / shingles fingerprinting).
+- Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity search).
+- Stage 10: Audit logging.

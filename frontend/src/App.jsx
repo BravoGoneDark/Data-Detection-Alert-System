@@ -258,52 +258,161 @@ function UploadPanel() {
               </div>
             </div>
 
-            {/* Duplicate Detection Refined Alert Card */}
+            {/* Duplicate Detection Refined Alert Card (Stage 6 Tiered) */}
             {result && result.duplicate && result.existing && (
-              <div className="bg-amber-950/40 border border-amber-600/60 rounded-2xl p-6 space-y-4 shadow-lg backdrop-blur-md">
-                <div className="flex items-center gap-2 text-amber-300">
-                  <span className="text-xl">⚠</span>
-                  <h3 className="font-semibold text-base">Duplicate Dataset Detected</h3>
+              <div className={`rounded-2xl p-6 space-y-4 shadow-xl backdrop-blur-md border ${
+                result.match_type === 'EXACT'
+                  ? 'bg-amber-950/40 border-amber-600/60 shadow-[0_0_25px_rgba(217,119,6,0.15)]'
+                  : 'bg-indigo-950/40 border-cyan-500/60 shadow-[0_0_25px_rgba(6,182,212,0.15)]'
+              }`}>
+                
+                {/* Header with Match Type Badge */}
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="text-xl">
+                      {result.match_type === 'EXACT' ? '⚡' : '🔍'}
+                    </span>
+                    <div>
+                      <h3 className="font-semibold text-base text-white">
+                        {result.match_type === 'EXACT'
+                          ? 'Exact Duplicate Detected'
+                          : 'Structural Similarity Match'}
+                      </h3>
+                      <p className="text-[11px] text-slate-400">
+                        {result.match_type === 'EXACT'
+                          ? 'Identical SHA-256 cryptographic fingerprint found'
+                          : `High structural & schema overlap (${result.similarity_score}%)`}
+                      </p>
+                    </div>
+                  </div>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
+                    result.match_type === 'EXACT'
+                      ? 'bg-amber-900/60 text-amber-300 border-amber-500/50'
+                      : 'bg-cyan-900/60 text-cyan-300 border-cyan-400/50 animate-pulse'
+                  }`}>
+                    {result.match_type === 'EXACT' ? '100% HASH MATCH' : `${result.similarity_score}% SIMILAR`}
+                  </span>
                 </div>
 
-                <p className="text-xs text-amber-200/80 leading-relaxed">
-                  An identical dataset with this cryptographic signature already exists in the system. Single-Instance Storage avoids duplicate storage overhead.
-                </p>
+                {/* Similarity Breakdown Bars for Metadata Matches */}
+                {result.score_breakdown && (
+                  <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3.5 space-y-2.5">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                      Similarity Metrics Breakdown
+                    </div>
+                    
+                    <div className="space-y-1.5 text-xs">
+                      <div>
+                        <div className="flex justify-between text-[11px] text-slate-300 mb-0.5">
+                          <span>Filename Match</span>
+                          <span className="font-mono text-cyan-300">{result.score_breakdown.filename_similarity}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                            style={{ width: `${result.score_breakdown.filename_similarity}%` }}
+                          />
+                        </div>
+                      </div>
 
-                <div className="bg-slate-950/80 border border-amber-800/40 rounded-xl p-4 space-y-2 text-xs">
-                  <div className="flex justify-between items-center py-1 border-b border-slate-800">
-                    <span className="text-slate-400">Canonical Filename:</span>
-                    <span className="font-mono text-amber-200 font-medium">{result.existing.filename}</span>
+                      <div>
+                        <div className="flex justify-between text-[11px] text-slate-300 mb-0.5">
+                          <span>Schema & Column Overlap</span>
+                          <span className="font-mono text-cyan-300">{result.score_breakdown.schema_similarity}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-cyan-400 rounded-full transition-all duration-500"
+                            style={{ width: `${result.score_breakdown.schema_similarity}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <div className="flex justify-between text-[11px] text-slate-300 mb-0.5">
+                          <span>File Size Proximity</span>
+                          <span className="font-mono text-cyan-300">{result.score_breakdown.size_proximity}%</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-cyan-600 rounded-full transition-all duration-500"
+                            style={{ width: `${result.score_breakdown.size_proximity}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {result.score_breakdown.row_proximity !== null && (
+                        <div>
+                          <div className="flex justify-between text-[11px] text-slate-300 mb-0.5">
+                            <span>Row Count Alignment</span>
+                            <span className="font-mono text-cyan-300">{result.score_breakdown.row_proximity}%</span>
+                          </div>
+                          <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div
+                              className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                              style={{ width: `${result.score_breakdown.row_proximity}%` }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-800">
+                )}
+
+                {/* Candidate & Incoming Schema Comparison */}
+                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">Closest Existing Dataset:</span>
+                    <span className="font-mono text-cyan-200 font-medium">{result.existing.filename}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
                     <span className="text-slate-400">Original Uploader:</span>
                     <span className="text-slate-200">{result.existing.uploader_username || 'System'}</span>
                   </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-800">
+                  <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
                     <span className="text-slate-400">Classification:</span>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${getClassificationBadge(result.existing.classification)}`}>
                       {result.existing.classification}
                     </span>
                   </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-800">
-                    <span className="text-slate-400">Upload Date:</span>
-                    <span className="text-slate-300">{new Date(result.existing.uploaded_at).toLocaleString()}</span>
+                  <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                    <span className="text-slate-400">Uploaded Size:</span>
+                    <span className="text-slate-300 font-mono">{(result.size_bytes / 1024).toFixed(1)} KB (vs. {(result.existing.size_bytes / 1024).toFixed(1)} KB existing)</span>
                   </div>
-                  <div className="flex justify-between items-center py-1 border-b border-slate-800">
-                    <span className="text-slate-400">File Size:</span>
-                    <span className="text-slate-300 font-mono">{(result.size_bytes / 1024).toFixed(1)} KB</span>
-                  </div>
-                  <div className="pt-1">
-                    <span className="text-slate-500 block text-[10px] uppercase tracking-wider mb-0.5">SHA-256 Digest:</span>
-                    <span className="font-mono text-[11px] text-amber-300/90 break-all">{result.sha256}</span>
-                  </div>
+
+                  {/* Schema Columns comparison if available */}
+                  {result.extracted_columns && result.extracted_columns.length > 0 && (
+                    <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 uppercase tracking-wider font-mono">
+                        <span>Extracted Columns ({result.extracted_columns.length})</span>
+                        <span>{result.row_count !== null ? `${result.row_count} rows` : ''}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {result.extracted_columns.map((col) => {
+                          const isShared = (result.existing.columns || []).includes(col)
+                          return (
+                            <span
+                              key={col}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                isShared
+                                  ? 'bg-cyan-950/80 text-cyan-300 border-cyan-700/60'
+                                  : 'bg-amber-950/80 text-amber-300 border-amber-700/60'
+                              }`}
+                            >
+                              {col} {isShared ? '✓' : '+'}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Duplicate Actions */}
-                <div className="pt-2 space-y-2">
+                <div className="pt-1 space-y-2">
                   <button
                     onClick={() => handleDownload(result.existing.id, result.existing.filename)}
-                    className="w-full py-2 px-3 rounded-lg bg-amber-600 hover:bg-amber-500 text-black font-semibold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    className="w-full py-2 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs transition-all shadow-[0_0_12px_rgba(0,194,222,0.25)] flex items-center justify-center gap-1.5"
                   >
                     ⬇ Use Existing Dataset (Download)
                   </button>
@@ -313,7 +422,7 @@ function UploadPanel() {
                     disabled={loading}
                     className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs transition-colors"
                   >
-                    ⚡ Proceed Anyway (Register Alias Record)
+                    ⚡ Proceed Anyway (Register as New Dataset)
                   </button>
 
                   <button
@@ -333,11 +442,25 @@ function UploadPanel() {
                   <span>✓</span>
                   <h3>Unique Dataset Registered</h3>
                 </div>
-                <div className="text-xs space-y-1 text-emerald-200/80">
+                <div className="text-xs space-y-1.5 text-emerald-200/80">
                   <p>File: <strong className="text-white font-mono">{result.filename}</strong></p>
                   <p>Classification: <strong className="text-white">{result.classification}</strong></p>
                   <p>Size: <span className="font-mono">{(result.size_bytes / 1024).toFixed(1)} KB</span></p>
-                  <p className="text-[11px] font-mono break-all opacity-80">SHA-256: {result.sha256}</p>
+                  {result.row_count !== null && (
+                    <p>Shape: <span className="font-mono">{result.row_count} rows • {result.extracted_columns?.length || 0} columns</span></p>
+                  )}
+                  {result.extracted_columns && result.extracted_columns.length > 0 && (
+                    <div className="pt-2">
+                      <span className="text-[10px] text-emerald-400/70 block uppercase tracking-wider mb-1 font-mono">Schema Columns:</span>
+                      <div className="flex flex-wrap gap-1">
+                        {result.extracted_columns.map(c => (
+                          <span key={c} className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-900/60 border border-emerald-700/50 text-emerald-200">
+                            {c}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -371,7 +494,7 @@ function UploadPanel() {
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
                       <tr className="border-b border-slate-800 text-slate-400 uppercase text-[10px] tracking-wider">
-                        <th className="py-2.5 px-3">Dataset</th>
+                        <th className="py-2.5 px-3">Dataset & Schema</th>
                         <th className="py-2.5 px-2">Classification</th>
                         <th className="py-2.5 px-2">Uploader</th>
                         <th className="py-2.5 px-2">Size</th>
@@ -383,11 +506,40 @@ function UploadPanel() {
                       {datasets.map((d) => (
                         <tr key={d.id} className="hover:bg-slate-800/40 transition-colors">
                           <td className="py-3 px-3">
-                            <div className="font-medium text-slate-200">{d.filename}</div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-200">{d.filename}</span>
+                              {d.mime_type && d.mime_type.includes('csv') && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-cyan-950/80 text-cyan-400 border border-cyan-800/50">CSV</span>
+                              )}
+                              {d.mime_type && d.mime_type.includes('json') && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-purple-950/80 text-purple-400 border border-purple-800/50">JSON</span>
+                              )}
+                            </div>
+
                             {d.description && (
-                              <div className="text-[11px] text-slate-500 truncate max-w-xs">{d.description}</div>
+                              <div className="text-[11px] text-slate-400 truncate max-w-xs">{d.description}</div>
                             )}
-                            <div className="text-[10px] font-mono text-slate-500 truncate max-w-xs">{d.sha256.slice(0, 16)}...</div>
+
+                            {/* Schema columns pills */}
+                            {d.columns && d.columns.length > 0 ? (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  {d.row_count !== null ? `${d.row_count} rows • ` : ''}{d.columns.length} cols:
+                                </span>
+                                <div className="flex flex-wrap gap-1 max-w-xs truncate">
+                                  {d.columns.slice(0, 3).map(c => (
+                                    <span key={c} className="px-1 py-0.2 rounded text-[9px] font-mono bg-slate-800 text-slate-300">
+                                      {c}
+                                    </span>
+                                  ))}
+                                  {d.columns.length > 3 && (
+                                    <span className="text-[9px] text-slate-500 font-mono">+{d.columns.length - 3}</span>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="text-[10px] font-mono text-slate-500 truncate max-w-xs mt-0.5">{d.sha256.slice(0, 16)}...</div>
+                            )}
                           </td>
                           <td className="py-3 px-2">
                             <span className={`px-2 py-0.5 rounded text-[10px] font-mono border ${getClassificationBadge(d.classification)}`}>

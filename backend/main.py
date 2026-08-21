@@ -1,4 +1,5 @@
 import hashlib
+import json
 from datetime import datetime, timezone
 from app.auth import router as auth_router, get_current_user
 from app.models import User, Dataset
@@ -11,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.authorization import require_permission, can_user_access_classification
 from app.storage import get_storage
+from app.metadata_extractor import extract_metadata, ExtractedMetadata
+from app.similarity import compute_metadata_similarity, parse_db_columns
 
 app = FastAPI(title="DDAS - Data Duplicate Analysis System")
 
@@ -31,6 +34,13 @@ app.add_middleware(
 )
 
 
+class ScoreBreakdown(BaseModel):
+    filename_similarity: float
+    schema_similarity: float
+    size_proximity: float
+    row_proximity: float | None = None
+
+
 class ExistingDataset(BaseModel):
     id: int
     filename: str
@@ -41,6 +51,10 @@ class ExistingDataset(BaseModel):
     uploader_username: str | None = None
     download_count: int = 0
     description: str | None = None
+    columns: list[str] = []
+    row_count: int | None = None
+    col_count: int | None = None
+    mime_type: str | None = None
 
     class Config:
         from_attributes = True
@@ -52,7 +66,13 @@ class UploadResult(BaseModel):
     sha256: str
     size_bytes: int
     duplicate: bool
+    match_type: str = "UNIQUE"  # "UNIQUE", "EXACT", "METADATA_SIMILAR"
+    similarity_score: float = 0.0
+    score_breakdown: ScoreBreakdown | None = None
     classification: str | None = None
+    extracted_columns: list[str] = []
+    row_count: int | None = None
+    col_count: int | None = None
     existing: ExistingDataset | None = None
 
 
@@ -66,6 +86,10 @@ class DatasetOut(BaseModel):
     uploader_username: str | None = None
     download_count: int = 0
     description: str | None = None
+    columns: list[str] = []
+    row_count: int | None = None
+    col_count: int | None = None
+    mime_type: str | None = None
 
     class Config:
         from_attributes = True
@@ -89,21 +113,28 @@ async def upload_dataset(
     file_bytes = await file.read()
     file_hash = compute_sha256(file_bytes)
 
-    # Check if duplicate exists
-    existing = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
+    # 1. Extract structural schema & metadata
+    meta = extract_metadata(file.filename, file_bytes)
 
-    if existing and not force:
-        uploader_name = existing.uploader.username if existing.uploader else "System"
+    # 2. Check for exact SHA-256 duplicate
+    existing_exact = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
+
+    if existing_exact and not force:
+        uploader_name = existing_exact.uploader.username if existing_exact.uploader else "System"
         existing_info = ExistingDataset(
-            id=existing.id,
-            filename=existing.filename,
-            sha256=existing.sha256,
-            size_bytes=existing.size_bytes,
-            uploaded_at=existing.uploaded_at,
-            classification=existing.classification or "INTERNAL",
+            id=existing_exact.id,
+            filename=existing_exact.filename,
+            sha256=existing_exact.sha256,
+            size_bytes=existing_exact.size_bytes,
+            uploaded_at=existing_exact.uploaded_at,
+            classification=existing_exact.classification or "INTERNAL",
             uploader_username=uploader_name,
-            download_count=existing.download_count,
-            description=existing.description,
+            download_count=existing_exact.download_count,
+            description=existing_exact.description,
+            columns=parse_db_columns(existing_exact.columns_json),
+            row_count=existing_exact.row_count,
+            col_count=existing_exact.col_count,
+            mime_type=existing_exact.mime_type,
         )
         return UploadResult(
             id=None,
@@ -111,15 +142,85 @@ async def upload_dataset(
             sha256=file_hash,
             size_bytes=len(file_bytes),
             duplicate=True,
+            match_type="EXACT",
+            similarity_score=100.0,
+            score_breakdown=ScoreBreakdown(
+                filename_similarity=100.0,
+                schema_similarity=100.0,
+                size_proximity=100.0,
+                row_proximity=100.0,
+            ),
             classification=classification,
+            extracted_columns=meta.columns,
+            row_count=meta.row_count,
+            col_count=meta.col_count,
             existing=existing_info,
         )
 
-    # Save to Content-Addressable Storage (CAS)
+    # 3. If no exact match and not force, run multi-attribute metadata similarity comparison
+    if not force:
+        all_candidates = db.query(Dataset).all()
+        best_candidate = None
+        best_score = 0.0
+        best_breakdown = None
+
+        for candidate in all_candidates:
+            if not can_user_access_classification(current_user, candidate.classification):
+                continue
+            cand_cols = parse_db_columns(candidate.columns_json)
+            score, breakdown = compute_metadata_similarity(
+                file.filename,
+                meta,
+                len(file_bytes),
+                candidate.filename,
+                cand_cols,
+                candidate.row_count,
+                candidate.size_bytes,
+            )
+            if score > best_score:
+                best_score = score
+                best_candidate = candidate
+                best_breakdown = breakdown
+
+        # If similarity exceeds threshold (70.0%), alert as metadata near-duplicate
+        if best_candidate and best_score >= 70.0:
+            uploader_name = best_candidate.uploader.username if best_candidate.uploader else "System"
+            existing_info = ExistingDataset(
+                id=best_candidate.id,
+                filename=best_candidate.filename,
+                sha256=best_candidate.sha256,
+                size_bytes=best_candidate.size_bytes,
+                uploaded_at=best_candidate.uploaded_at,
+                classification=best_candidate.classification or "INTERNAL",
+                uploader_username=uploader_name,
+                download_count=best_candidate.download_count,
+                description=best_candidate.description,
+                columns=parse_db_columns(best_candidate.columns_json),
+                row_count=best_candidate.row_count,
+                col_count=best_candidate.col_count,
+                mime_type=best_candidate.mime_type,
+            )
+            return UploadResult(
+                id=None,
+                filename=file.filename,
+                sha256=file_hash,
+                size_bytes=len(file_bytes),
+                duplicate=True,
+                match_type="METADATA_SIMILAR",
+                similarity_score=best_score,
+                score_breakdown=ScoreBreakdown(**best_breakdown),
+                classification=classification,
+                extracted_columns=meta.columns,
+                row_count=meta.row_count,
+                col_count=meta.col_count,
+                existing=existing_info,
+            )
+
+    # 4. Save to Content-Addressable Storage (CAS)
     storage = get_storage()
     storage_path = storage.save_file(file_hash, file_bytes)
 
-    # Insert dataset record into Postgres
+    # 5. Insert dataset record with metadata into Postgres
     new_dataset = Dataset(
         filename=file.filename,
         sha256=file_hash,
@@ -129,6 +230,10 @@ async def upload_dataset(
         storage_path=storage_path,
         uploader_id=current_user.id,
         download_count=0,
+        columns_json=json.dumps(meta.columns) if meta.columns else None,
+        row_count=meta.row_count,
+        col_count=meta.col_count,
+        mime_type=meta.mime_type,
     )
     db.add(new_dataset)
     db.commit()
@@ -139,8 +244,13 @@ async def upload_dataset(
         filename=new_dataset.filename,
         sha256=new_dataset.sha256,
         size_bytes=new_dataset.size_bytes,
-        duplicate=bool(existing),  # true if force uploaded alias, false if first unique
+        duplicate=bool(existing_exact),
+        match_type="UNIQUE" if not existing_exact else "EXACT",
+        similarity_score=100.0 if existing_exact else 0.0,
         classification=new_dataset.classification,
+        extracted_columns=meta.columns,
+        row_count=meta.row_count,
+        col_count=meta.col_count,
         existing=None,
     )
 
@@ -166,6 +276,10 @@ async def list_datasets(
                     uploader_username=d.uploader.username if d.uploader else "System",
                     download_count=d.download_count,
                     description=d.description,
+                    columns=parse_db_columns(d.columns_json),
+                    row_count=d.row_count,
+                    col_count=d.col_count,
+                    mime_type=d.mime_type,
                 )
             )
     return results
