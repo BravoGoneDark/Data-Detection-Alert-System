@@ -137,9 +137,9 @@ def compute_metadata_similarity(
             w_rows * s_rows
         )
     else:
-        # Non-tabular file weighting
-        w_name = 0.60
-        w_size = 0.40
+        # Non-tabular file weighting (filename is primary indicator)
+        w_name = 0.80
+        w_size = 0.20
         composite = (w_name * s_name) + (w_size * s_size)
 
     score_pct = round(composite * 100, 1)

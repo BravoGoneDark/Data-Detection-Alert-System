@@ -78,19 +78,17 @@ def run_tfidf_tests():
     print(f"[OK] Created user {username} with token")
 
     print("\n=== 2. Testing Unique Upload & TF-IDF Salient Keyword Extraction ===")
-    domain = f"neuro_{timestamp}"
-    fname_v1 = f"neurodoc_{timestamp}_alpha.txt"
+    fname_v1 = f"cyber_incident_report_{timestamp}_alpha.txt"
     text_v1 = f"""
-    Title: Analysis of {domain} Synaptic Plasticity and Neural Networks
-    Abstract: We investigate {domain}_dendritic spine morphology and {domain}_axon signaling across mammalian cerebral cortex.
-    High-frequency stimulation induces long-term potentiation in {domain}_hippocampal pyramidal neurons.
-    Electrophysiological recordings combined with two-photon imaging reveal calcium influx dynamics in {domain}_synapses.
-    Our computational model predicts memory consolidation rates across distributed cortical networks.
+    Cyber Incident Response: Adversarial Network Intrusion Vector Analysis Session_{timestamp}
+    During the forensic investigation of the security breach, analysts detected lateral movement and privilege escalation across domain controllers.
+    Malicious actors deployed credential dumping tools and established encrypted command-and-control tunnels to exfiltrate database records.
+    Our incident response protocol isolated compromised endpoints and revoked compromised API tokens, mitigating further exfiltration.
     """
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
-        {"classification": "PUBLIC", "description": "Neuroscience Synaptic Plasticity Study"},
+        {"classification": "PUBLIC", "description": f"Cyber Incident Analysis {timestamp}"},
         {"file": (fname_v1, content_v1, "text/plain")}
     )
     h_upload = headers.copy()
@@ -108,12 +106,12 @@ def run_tfidf_tests():
 
     print("\n=== 3. Testing Plagiarism & TF-IDF Cosine Similarity Matching ===")
     # Version 2 is completely rewritten in sentence structure and has a different filename, but shares the domain vocabulary
-    fname_v2 = f"synapse_digest_{timestamp}_beta.txt"
+    fname_v2 = f"forensic_breach_digest_{timestamp}_beta.txt"
     text_v2 = f"""
-    Executive Summary: {domain} Synaptic Plasticity and Cortical Networks Overview
-    During two-photon calcium imaging and electrophysiological experiments, {domain}_dendritic spine remodeling
-    and {domain}_axon signaling were observed in mammalian cerebral cortex. Long-term potentiation was stimulated
-    in {domain}_hippocampal pyramidal neurons, confirming memory consolidation in {domain}_synapses.
+    Executive Digest: Network Intrusion and Forensic Investigation Summary Session_{timestamp}
+    Forensic assessment of the cybersecurity breach revealed credential dumping and lateral movement targeting domain controllers.
+    Adversaries attempted privilege escalation and created encrypted command-and-control tunnels to facilitate database exfiltration.
+    Incident response teams isolated compromised endpoints and revoked authorization tokens to contain the threat.
     """
     content_v2 = text_v2.encode("utf-8")
 

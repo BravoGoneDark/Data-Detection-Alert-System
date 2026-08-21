@@ -30,6 +30,8 @@ class Dataset(Base):
     mime_type = Column(String, nullable=True)
     text_preview = Column(String, nullable=True)   # First 500 chars / summary of content
     top_keywords_json = Column(String, nullable=True)  # JSON-serialized list of top TF-IDF keywords
+    simhash = Column(String(18), index=True, nullable=True)  # 64-bit hex fingerprint (e.g. '0xa4f2819c90234bd1')
+    minhash_json = Column(String, nullable=True)  # JSON-serialized 64-int signature
 
     uploader = relationship("User", back_populates="datasets")
 

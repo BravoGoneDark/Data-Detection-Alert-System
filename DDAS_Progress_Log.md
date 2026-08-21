@@ -2,7 +2,7 @@
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
 **Date:** August 17–21, 2026
-**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), Stage 6 (Metadata & Structural Similarity Matching), and Stage 7 (TF-IDF & Cosine Similarity Content Matching)
+**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), Stage 6 (Metadata & Structural Similarity Matching), Stage 7 (TF-IDF & Cosine Similarity Content Matching), and Stage 8 (MinHash & SimHash Fuzzy Fingerprinting)
 
 ---
 
@@ -657,7 +657,93 @@ Verified via automated test suite `verify_tfidf_content_similarity.py`:
 
 ### 13.6 Not Yet Done / Deferred
 
-- Stage 8: MinHash / SimHash (fuzzy n-gram / shingles fingerprinting for massive corpora).
+- Stage 8: MinHash / SimHash — completed in Stage 8.
 - Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity search).
+- Stage 10: Audit logging on access denials and download events.
+- Stage 14: Comprehensive inner application UI & dashboard redesign.
+
+---
+
+## 14. Stage 8 — MinHash & SimHash Fuzzy Fingerprinting — Complete
+
+### 14.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── fuzzy_engine.py        ← Stage 8 (new): Multi-resolution character & word shingling, 64-bit FNV-1a SimHash, hardware bitwise Hamming distance, 64-permutation MinHash Jaccard estimator
+│   ├── tfidf_engine.py        ← Stage 7: TF-IDF vectorization, Cosine similarity, salient keywords
+│   ├── metadata_extractor.py  ← Stage 6: Schema and row extraction
+│   ├── similarity.py          ← Stage 6: Metadata multi-attribute similarity
+│   ├── main.py                ← Stage 8: Multi-tier duplicate detection (EXACT vs FUZZY_SIMILAR vs CONTENT_SIMILAR vs METADATA_SIMILAR)
+│   ├── models.py              ← Stage 8: Added indexed simhash (String(18)) and minhash_json to Dataset
+│   ├── storage.py             ← Content-Addressable Storage (CAS)
+│   ├── authorization.py       ← RBAC & Classification clearances
+│   ├── database.py            ← SQLAlchemy database session
+│   ├── auth.py                ← JWT authentication routes
+│   └── security.py            ← Password hashing and JWT helpers
+├── native/
+│   └── simhash_core.cpp       ← Stage 8 (new): High-performance C++ SIMD bitwise popcount and shingle hashing kernel
+├── alembic/
+│   └── versions/
+│       ├── d475e505391a_add_fuzzy_simhash_and_minhash_columns_to_datasets.py ← Stage 8 migration
+│       ├── 1648add5d368_add_tfidf_content_columns_to_datasets.py             ← Stage 7 migration
+│       └── e799d8505dcd_add_metadata_columns_to_datasets.py                 ← Stage 6 migration
+├── verify_cas_and_rbac.py     ← Stage 5 verification test suite
+├── verify_metadata_similarity.py ← Stage 6 verification test suite
+├── verify_tfidf_content_similarity.py ← Stage 7 verification test suite
+└── verify_fuzzy_similarity.py ← Stage 8 verification test suite
+frontend/
+└── src/
+    └── App.jsx                ← Stage 8: Multi-tier duplicate alert card with Rose/Crimson FUZZY_SIMILAR match card (Hamming bit distance, 64-bit hex comparator), Inventory search indexing, and SIMHASH badges
+```
+
+### 14.2 Concept: Fuzzy Fingerprinting & Bitwise Hamming Hyperplanes
+
+While SHA-256 (Stage 5) creates a completely randomized hash on any single-bit modification, **SimHash (Charikar's Algorithm)** produces locality-preserving bitwise fingerprints:
+- **How it works:**
+  1. Breaks text into multi-resolution $k$-shingles (4-character and 2-word overlapping n-grams).
+  2. Hashes each shingle with 64-bit FNV-1a into a 64-dimensional accumulator vector $V$:
+     $$\forall i \in [0, 63]: \quad V[i] += (\text{bit } i == 1 \ ? \ +1 : -1)$$
+  3. Constructs the 64-bit fingerprint: bit $i = 1$ if $V[i] > 0$ else $0$.
+- **Instantaneous $O(1)$ Comparison:**
+  - Bitwise Hamming Distance: $\text{dist} = \text{popcount}(H_1 \oplus H_2) \in [0, 64]$.
+  - Similarity percentage: $\left(1 - \frac{\text{dist}}{64}\right) \times 100\%$.
+  - When $\text{dist} \le 4$ bits ($\ge 93.75\%$ bit agreement), the document is a **Near-Identical Fuzzy Duplicate with Typos/Sentence Edits**.
+
+### 14.3 MinHash Jaccard Estimation ($K=64$ Permutations)
+
+- Calculates universal hash permutations: $h_i(s) = (a_i \cdot \text{hash}(s) + b_i) \pmod p$ with Mersenne prime $p = 2^{61} - 1$.
+- Stores 64 integer minimum signature values in PostgreSQL.
+- Estimated Jaccard similarity: $\hat{J}(D_1, D_2) = \frac{\#\{i \mid h_i(D_1) = h_i(D_2)\}}{64}$.
+
+### 14.4 Database Design & Migration (`d475e505391a`)
+
+Two new columns added to `datasets`:
+- `simhash` (`String(18)`, indexed, nullable): 64-bit hex representation (e.g. `'0xc71907e15216d075'`).
+- `minhash_json` (`String`, nullable): JSON-serialized array of 64 integer hash signatures.
+
+### 14.5 Multi-Tier Prioritized Duplicate Detection Pipeline
+
+`POST /datasets/upload` evaluates incoming uploads across 4 prioritized detection tiers:
+1. **Tier 1 — Exact Cryptographic Collision (`EXACT`):** 100% SHA-256 hash match (Amber badge).
+2. **Tier 2 — Structural Schema Overlap (`METADATA_SIMILAR`):** Tabular schema Jaccard score $\ge 70.0\%$ (Cyan badge, metric breakdown progress bars, column inspector).
+3. **Tier 3 — Fuzzy Fingerprint Match (`FUZZY_SIMILAR`):** SimHash Hamming Distance $\le 4$ bits / $\ge 93.7\%$ similarity (Rose/Crimson badge, 64-bit hex comparator, bit-flip meter).
+4. **Tier 4 — Content / Plagiarism Overlap (`CONTENT_SIMILAR`):** TF-IDF Cosine Similarity $\ge 60.0\%$ (Purple/Fuchsia badge, shared `#keyword` tags, side-by-side text preview).
+
+### 14.6 Verified Working (End-to-End)
+
+Verified via automated test suite `verify_fuzzy_similarity.py`:
+1. **SimHash Generation:** Accurately generated 64-bit SimHash hex fingerprints on upload.
+2. **Fuzzy Near-Duplicate Catch:** Re-upload of an existing document with a single character typo triggered `match_type: "FUZZY_SIMILAR"` with a **3-bit Hamming distance (95.3% similarity)** and displayed candidate comparison.
+3. **Exact Collision Catch:** Exact content upload returned `match_type: "EXACT"` with 100.0% score.
+4. **Force Upload Override:** Overrode duplicate warning with `force=true` and registered the new variant in PostgreSQL.
+5. **Inventory Display:** `GET /datasets` confirmed `simhash` returned and searchable in dataset list.
+6. **Streaming Download:** `GET /datasets/{id}/download` streamed exact file bytes.
+7. **Full 4-Stage Regression:** All 4 test suites passed 100%.
+
+### 14.7 Not Yet Done / Deferred
+
+- Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity indexing).
 - Stage 10: Audit logging on access denials and download events.
 - Stage 14: Comprehensive inner application UI & dashboard redesign.

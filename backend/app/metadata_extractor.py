@@ -29,7 +29,7 @@ def extract_metadata(filename: str, file_bytes: bytes) -> ExtractedMetadata:
     mime_type = guessed_type or "application/octet-stream"
 
     # 1. Handle CSV / TSV
-    if ext in [".csv", ".tsv", ".txt"] or "csv" in mime_type or "text" in mime_type:
+    if ext in [".csv", ".tsv"] or ("csv" in mime_type) or (ext == ".txt" and ("," in file_bytes[:4096].decode("utf-8", errors="ignore") or "\t" in file_bytes[:4096].decode("utf-8", errors="ignore"))):
         try:
             # Decode sample to determine delimiter and structure
             text_stream = io.StringIO(file_bytes.decode("utf-8", errors="replace"))
@@ -40,25 +40,36 @@ def extract_metadata(filename: str, file_bytes: bytes) -> ExtractedMetadata:
             if ext == ".tsv" or "\t" in sample and sample.count("\t") > sample.count(","):
                 delimiter = "\t"
 
-            reader = csv.reader(text_stream, delimiter=delimiter)
-            header_row = next(reader, None)
+            # Only treat as structured table if the delimiter actually splits into multiple columns
+            if delimiter in sample:
+                reader = csv.reader(text_stream, delimiter=delimiter)
+                header_row = next(reader, None)
 
-            if header_row:
-                # Clean and normalize header columns
-                columns = [col.strip().lower() for col in header_row if col.strip()]
-                # Count total remaining rows safely
-                row_count = sum(1 for row in reader if any(field.strip() for field in row))
-                col_count = len(columns)
+                if header_row:
+                    # Clean and normalize header columns
+                    columns = [col.strip().lower() for col in header_row if col.strip()]
+                    # Count total remaining rows safely
+                    row_count = sum(1 for row in reader if any(field.strip() for field in row))
+                    col_count = len(columns)
 
-                if col_count > 0:
-                    return ExtractedMetadata(
-                        columns=columns,
-                        row_count=row_count,
-                        col_count=col_count,
-                        mime_type="text/csv" if delimiter == "," else "text/tab-separated-values",
-                    )
+                    if col_count >= 2:
+                        return ExtractedMetadata(
+                            columns=columns,
+                            row_count=row_count,
+                            col_count=col_count,
+                            mime_type="text/csv" if delimiter == "," else "text/tab-separated-values",
+                        )
         except Exception:
             pass
+
+    # 1.5 Handle Plain Text
+    if ext in [".txt", ".md", ".log"] or "text" in mime_type:
+        return ExtractedMetadata(
+            columns=[],
+            row_count=None,
+            col_count=None,
+            mime_type="text/plain",
+        )
 
     # 2. Handle JSON
     if ext == ".json" or "json" in mime_type:

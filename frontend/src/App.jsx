@@ -181,7 +181,8 @@ function UploadPanel() {
     const matchMime = (d.mime_type || '').toLowerCase().includes(q)
     const matchKeywords = (d.top_keywords || []).some(k => k.toLowerCase().includes(q))
     const matchCols = (d.columns || []).some(c => c.toLowerCase().includes(q))
-    return matchName || matchUploader || matchClass || matchDesc || matchMime || matchKeywords || matchCols
+    const matchSimhash = (d.simhash || '').toLowerCase().includes(q)
+    return matchName || matchUploader || matchClass || matchDesc || matchMime || matchKeywords || matchCols || matchSimhash
   })
 
   // Sorting Logic
@@ -243,7 +244,7 @@ function UploadPanel() {
               <span className="h-3 w-3 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_12px_rgba(0,194,222,0.8)]" />
               <h1 className="text-2xl font-bold tracking-tight text-white">DDAS Platform</h1>
               <span className="text-xs px-2.5 py-0.5 rounded-full border border-cyan-500/30 bg-cyan-950/40 text-cyan-300 font-mono">
-                Stage 7: TF-IDF & Cosine Similarity
+                Stage 8: MinHash & SimHash
               </span>
             </div>
             <p className="text-slate-400 text-sm mt-1">
@@ -332,11 +333,13 @@ function UploadPanel() {
               </div>
             </div>
 
-            {/* Duplicate Detection Refined Alert Card (Stage 7 Tri-Tier) */}
+            {/* Duplicate Detection Refined Alert Card (Stage 8 Multi-Tier) */}
             {result && result.duplicate && result.existing && (
               <div className={`rounded-2xl p-6 space-y-4 shadow-xl backdrop-blur-md border ${
                 result.match_type === 'EXACT'
                   ? 'bg-amber-950/40 border-amber-600/60 shadow-[0_0_25px_rgba(217,119,6,0.15)]'
+                  : result.match_type === 'FUZZY_SIMILAR'
+                  ? 'bg-rose-950/40 border-rose-500/60 shadow-[0_0_25px_rgba(244,63,94,0.2)]'
                   : result.match_type === 'CONTENT_SIMILAR'
                   ? 'bg-purple-950/40 border-fuchsia-500/60 shadow-[0_0_25px_rgba(217,70,239,0.18)]'
                   : 'bg-indigo-950/40 border-cyan-500/60 shadow-[0_0_25px_rgba(6,182,212,0.15)]'
@@ -346,12 +349,14 @@ function UploadPanel() {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2.5">
                     <span className="text-xl">
-                      {result.match_type === 'EXACT' ? '⚡' : result.match_type === 'CONTENT_SIMILAR' ? '📑' : '🔍'}
+                      {result.match_type === 'EXACT' ? '⚡' : result.match_type === 'FUZZY_SIMILAR' ? '🧬' : result.match_type === 'CONTENT_SIMILAR' ? '📑' : '🔍'}
                     </span>
                     <div>
                       <h3 className="font-semibold text-base text-white">
                         {result.match_type === 'EXACT'
                           ? 'Exact Duplicate Detected'
+                          : result.match_type === 'FUZZY_SIMILAR'
+                          ? 'Fuzzy & SimHash Shingle Match'
                           : result.match_type === 'CONTENT_SIMILAR'
                           ? 'Content & Plagiarism Match'
                           : 'Structural Similarity Match'}
@@ -359,6 +364,8 @@ function UploadPanel() {
                       <p className="text-[11px] text-slate-400">
                         {result.match_type === 'EXACT'
                           ? 'Identical SHA-256 cryptographic fingerprint found'
+                          : result.match_type === 'FUZZY_SIMILAR'
+                          ? `Near-identical text with minor typos/sentence edits (${result.hamming_distance}/64 bits distance)`
                           : result.match_type === 'CONTENT_SIMILAR'
                           ? `High text vocabulary & TF-IDF cosine overlap (${result.similarity_score}%)`
                           : `High structural & schema overlap (${result.similarity_score}%)`}
@@ -368,17 +375,47 @@ function UploadPanel() {
                   <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border ${
                     result.match_type === 'EXACT'
                       ? 'bg-amber-900/60 text-amber-300 border-amber-500/50'
+                      : result.match_type === 'FUZZY_SIMILAR'
+                      ? 'bg-rose-900/60 text-rose-300 border-rose-400/50 animate-pulse'
                       : result.match_type === 'CONTENT_SIMILAR'
                       ? 'bg-fuchsia-900/60 text-fuchsia-300 border-fuchsia-400/50 animate-pulse'
                       : 'bg-cyan-900/60 text-cyan-300 border-cyan-400/50 animate-pulse'
                   }`}>
                     {result.match_type === 'EXACT'
                       ? '100% HASH MATCH'
+                      : result.match_type === 'FUZZY_SIMILAR'
+                      ? `${result.hamming_distance} BITS FLIPPED (${result.similarity_score}%)`
                       : result.match_type === 'CONTENT_SIMILAR'
                       ? `${result.similarity_score}% COSINE MATCH`
                       : `${result.similarity_score}% SIMILAR`}
                   </span>
                 </div>
+
+                {/* 64-bit SimHash Fingerprint Comparator for Fuzzy Matches */}
+                {result.match_type === 'FUZZY_SIMILAR' && (
+                  <div className="bg-slate-950/80 border border-rose-900/50 rounded-xl p-3.5 space-y-2">
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-rose-400 flex items-center justify-between">
+                      <span className="flex items-center gap-1"><span>🧬</span> 64-bit SimHash Fingerprints</span>
+                      <span className="text-rose-300 font-bold">{64 - (result.hamming_distance || 0)} / 64 Bits Aligned</span>
+                    </div>
+                    <div className="space-y-1 text-xs font-mono">
+                      <div className="flex justify-between items-center bg-slate-900/80 px-2.5 py-1.5 rounded border border-slate-800">
+                        <span className="text-slate-400 text-[10px]">Incoming Fingerprint:</span>
+                        <span className="text-rose-300 font-bold">{result.simhash || '0x...'}</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-slate-900/80 px-2.5 py-1.5 rounded border border-slate-800">
+                        <span className="text-slate-400 text-[10px]">Closest Fingerprint:</span>
+                        <span className="text-rose-300 font-bold">{result.existing.simhash || '0x...'}</span>
+                      </div>
+                    </div>
+                    <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden mt-2">
+                      <div
+                        className="h-full bg-rose-500 rounded-full transition-all duration-500"
+                        style={{ width: `${result.similarity_score}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Shared Keywords for Content Similarity (TF-IDF) */}
                 {result.match_type === 'CONTENT_SIMILAR' && result.shared_keywords && result.shared_keywords.length > 0 && (
@@ -717,6 +754,11 @@ function UploadPanel() {
                                 )}
                                 {d.mime_type && d.mime_type.includes('text') && (
                                   <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-emerald-950/80 text-emerald-400 border border-emerald-800/50">TXT</span>
+                                )}
+                                {d.simhash && (
+                                  <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-rose-950/70 text-rose-300 border border-rose-800/40" title={`SimHash Fingerprint: ${d.simhash}`}>
+                                    🧬 {d.simhash.slice(0, 8)}...
+                                  </span>
                                 )}
                               </div>
 
