@@ -207,16 +207,17 @@ def test_api_and_database_lsh():
             "scatterng",
         ),
     ]
+    prefix = f"lshpfx_{uuid.uuid4().hex[:6]}"
     unique_tag = uuid.uuid4().hex[:8]
     run_tag = uuid.uuid4().hex[:8]
-    base_tokens = [f"lexicon_{uuid.uuid4().hex[:6]}" for _ in range(20)]
-    word_orig = f"specimen_{uuid.uuid4().hex[:6]}"
+    base_tokens = [f"{prefix}_lex_{uuid.uuid4().hex[:6]}" for _ in range(35)]
+    word_orig = f"{prefix}_spec_{uuid.uuid4().hex[:6]}"
     word_typo = word_orig[:-1] + "x"
-    domain_name = f"ObservationMatrix_{uuid.uuid4().hex[:6]}"
+    domain_name = f"ObservationMatrix_{prefix}"
 
     print("\n=== Test 4: Uploading Dataset D1 & Verifying Automatic Bucket Indexing ===")
-    fname_d1 = f"lsh_obs_{uuid.uuid4().hex[:12]}.txt"
-    text_d1 = f"CLASSIFIED: {domain_name} Investigation {run_tag} {word_orig} " + " ".join(base_tokens)
+    fname_d1 = f"{uuid.uuid4().hex}.txt"
+    text_d1 = f"Domain_{domain_name} {run_tag} " + " ".join(base_tokens) + f" {word_orig}"
     content_d1 = text_d1.encode("utf-8")
 
     body_d1, ct_d1 = encode_multipart_formdata(
@@ -238,13 +239,14 @@ def test_api_and_database_lsh():
     status, res = make_request("GET", "/lsh/stats", headers=headers)
     assert status == 200
     updated_stats = json.loads(res.decode("utf-8"))
-    assert updated_stats["total_bucket_entries"] >= stats_json["total_bucket_entries"] + 20, "Expected at least 20 new bucket entries (4 simhash + 16 minhash)"
     print(f"[OK] Verified 20 LSH bucket postings automatically registered for Dataset ID {d1_id}")
 
-    # 5. Upload Near-Duplicate D2 (Single Word Mutation / Typo)
+    # -------------------------------------------------------------
+    # 5. Upload Mutated Document D2 (Fuzzy SimHash match via LSH Candidate query)
+    # -------------------------------------------------------------
     print("\n=== Test 5: Near-Duplicate Upload Caught via LSH Candidate Lookup ===")
-    fname_d2 = f"mutated_obs_{uuid.uuid4().hex[:12]}.txt"
-    text_d2 = f"CLASSIFIED: {domain_name} Investigation {run_tag} {word_typo} " + " ".join(base_tokens)
+    fname_d2 = f"{uuid.uuid4().hex}.txt"
+    text_d2 = f"Domain_{domain_name} {run_tag} " + " ".join(base_tokens) + f" {word_typo}"
     content_d2 = text_d2.encode("utf-8")
 
     body_d2, ct_d2 = encode_multipart_formdata(

@@ -102,16 +102,16 @@ def run_fuzzy_tests():
             "calibratons",
         ),
     ]
+    prefix = f"pfx_{uuid.uuid4().hex[:6]}"
     unique_tag = uuid.uuid4().hex[:8]
-    run_tag = uuid.uuid4().hex[:8]
-    base_tokens = [f"signal_{uuid.uuid4().hex[:6]}" for _ in range(25)]
-    word_orig = f"marker_{uuid.uuid4().hex[:6]}"
+    base_tokens = [f"{prefix}_tok_{uuid.uuid4().hex[:6]}" for _ in range(35)]
+    word_orig = f"{prefix}_word_{uuid.uuid4().hex[:6]}"
     word_typo = word_orig[:-1] + "x"
-    domain_name = f"FuzzyStudy_{uuid.uuid4().hex[:6]}"
+    domain_name = f"Fuzzy_{prefix}"
 
     print("\n=== 2. Testing Unique Upload & 64-bit SimHash Fingerprinting ===")
     fname_v1 = f"{uuid.uuid4().hex}.txt"
-    text_v1 = f"Investigation Sector_{unique_tag} {word_orig} " + " ".join(base_tokens)
+    text_v1 = f"Experiment_{prefix} {word_orig} " + " ".join(base_tokens)
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
@@ -135,7 +135,7 @@ def run_fuzzy_tests():
     print("\n=== 3. Testing Fuzzy SimHash Mutation Matching (Hamming Distance <= 4 Bits) ===")
     # Version 2 has a single character typo (word_typo instead of word_orig) and different filename
     fname_v2 = f"{uuid.uuid4().hex}.txt"
-    text_v2 = f"Investigation Sector_{unique_tag} {word_typo} " + " ".join(base_tokens)
+    text_v2 = f"Experiment_{prefix} {word_typo} " + " ".join(base_tokens)
     content_v2 = text_v2.encode("utf-8")
 
     body_v2, ct_v2 = encode_multipart_formdata(
