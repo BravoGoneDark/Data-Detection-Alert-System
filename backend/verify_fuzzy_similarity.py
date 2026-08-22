@@ -72,18 +72,28 @@ def run_fuzzy_tests():
     headers = {"Authorization": f"Bearer {token}"}
     print(f"[OK] Created user {username} with token")
 
+    topic_seeds = [
+        ("Astrophysics Magnetar", "Magnetospheric Alfvén wave resonance in relativistic neutron stars", "spectrophotometers", "spectrophotometrs"),
+        ("Marine Deep Trench", "Extremophile bacterial colonies inhabiting volcanic hydrothermal vent plumes", "chemosynthetic", "chemosynthetc"),
+        ("Cryogenics Josephson", "Superconducting quantum interference devices in sub-Kelvin dilution refrigerators", "oscillations", "oscillatons"),
+        ("Genomics CRISPR", "Targeted endonuclease cleavage kinetics in synthetic eukaryotic chromosome vectors", "phosphorylation", "phoshorylation"),
+    ]
+    seed_idx = (int(time.time()) + int(uuid.uuid4().hex[:4], 16)) % len(topic_seeds)
+    domain_name, domain_phrase, word_orig, word_typo = topic_seeds[seed_idx]
+    unique_tag = uuid.uuid4().hex[:6]
+
     print("\n=== 2. Testing Unique Upload & 64-bit SimHash Fingerprinting ===")
-    fname_v1 = f"enzyme_kinetics_study_{timestamp}_alpha.txt"
+    fname_v1 = f"{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_alpha.txt"
     text_v1 = f"""
-    Title: Analysis of Enzyme Catalysis Kinetics and Inhibitor Binding Session_{timestamp}
-    Abstract: We investigate allosteric regulation and catalytic turnover rates in metabolic kinase pathways.
-    Spectrophotometric assays measure substrate phosphorylation across varied temperature and pH gradients.
-    Our competitive inhibitor model demonstrates high binding affinity at the primary catalytic pocket.
+    Title: {domain_name} Investigation Sector_{unique_tag}
+    Abstract: We investigate {domain_phrase} for experimental trial {unique_tag}.
+    Precision laboratory sensors measure {word_orig} across thermal and pressure gradients.
+    Our predictive mathematical model demonstrates high binding affinity at the primary catalytic pocket for variant {unique_tag}.
     """
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
-        {"classification": "PUBLIC", "description": f"Enzyme Study {timestamp}"},
+        {"classification": "PUBLIC", "description": f"{domain_name} Study {unique_tag}"},
         {"file": (fname_v1, content_v1, "text/plain")},
     )
     h_upload = headers.copy()
@@ -97,22 +107,22 @@ def run_fuzzy_tests():
     assert res_json["simhash"] is not None and res_json["simhash"].startswith("0x"), "Expected valid 64-bit SimHash hex string"
     dataset_v1_id = res_json["id"]
     simhash_v1 = res_json["simhash"]
-    print(f"[OK] Unique genomic report uploaded (ID: {dataset_v1_id})")
+    print(f"[OK] Unique report uploaded (ID: {dataset_v1_id})")
     print(f"     64-bit SimHash Fingerprint: {simhash_v1}")
 
     print("\n=== 3. Testing Fuzzy SimHash Mutation Matching (Hamming Distance <= 4 Bits) ===")
-    # Version 2 has a single character typo (phoshorylation instead of phosphorylation) and different filename
-    fname_v2 = f"mutated_kinetics_brief_{timestamp}_beta.txt"
+    # Version 2 has a single character typo (word_typo instead of word_orig) and different filename
+    fname_v2 = f"mutated_{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_beta.txt"
     text_v2 = f"""
-    Title: Analysis of Enzyme Catalysis Kinetics and Inhibitor Binding Session_{timestamp}
-    Abstract: We investigate allosteric regulation and catalytic turnover rates in metabolic kinase pathways.
-    Spectrophotometric assays measure substrate phoshorylation across varied temperature and pH gradients.
-    Our competitive inhibitor model demonstrates high binding affinity at the primary catalytic pocket.
+    Title: {domain_name} Investigation Sector_{unique_tag}
+    Abstract: We investigate {domain_phrase} for experimental trial {unique_tag}.
+    Precision laboratory sensors measure {word_typo} across thermal and pressure gradients.
+    Our predictive mathematical model demonstrates high binding affinity at the primary catalytic pocket for variant {unique_tag}.
     """
     content_v2 = text_v2.encode("utf-8")
 
     body_v2, ct_v2 = encode_multipart_formdata(
-        {"classification": "PUBLIC", "description": "Mutated CRISPR Variant"},
+        {"classification": "PUBLIC", "description": f"Mutated {domain_name} Variant"},
         {"file": (fname_v2, content_v2, "text/plain")},
     )
     h_upload_v2 = headers.copy()

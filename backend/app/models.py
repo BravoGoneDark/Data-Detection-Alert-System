@@ -34,6 +34,19 @@ class Dataset(Base):
     minhash_json = Column(String, nullable=True)  # JSON-serialized 64-int signature
 
     uploader = relationship("User", back_populates="datasets")
+    lsh_buckets = relationship("LSHBucket", back_populates="dataset", cascade="all, delete-orphan")
+
+
+class LSHBucket(Base):
+    __tablename__ = "lsh_buckets"
+
+    id = Column(Integer, primary_key=True, index=True)
+    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False)
+    band_type = Column(String(10), nullable=False)  # 'SIMHASH' or 'MINHASH'
+    band_index = Column(Integer, nullable=False)
+    bucket_key = Column(String(64), index=True, nullable=False)
+
+    dataset = relationship("Dataset", back_populates="lsh_buckets")
 
 
 class User(Base):

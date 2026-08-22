@@ -77,26 +77,60 @@ def run_tfidf_tests():
     headers = {"Authorization": f"Bearer {token}"}
     print(f"[OK] Created user {username} with token")
 
+    topic_seeds = [
+        (
+            "Neuromorphic Spiking",
+            """Neuromorphic Computing Laboratory: Memristive Spiking Neural Network Architecture Sector_{unique_tag}
+Hardware memristor crossbar arrays implement spike-timing-dependent plasticity for low-power event-based sensory processing.
+Silicon micro-electrodes record asynchronous post-synaptic current pulses and axonal propagation delays across artificial neurons.
+Our neuromorphic design achieves ultralow latency pattern recognition while minimizing dynamic energy dissipation.""",
+            """Neuromorphic Computing Digest: Memristive Spiking Neural Network Synthesis Sector_{unique_tag}
+Hardware memristor crossbars achieve low-power event-based sensory processing using spike-timing-dependent plasticity.
+Asynchronous post-synaptic current pulses and axonal propagation delays are evaluated across artificial neurons.
+Our neuromorphic architecture achieves ultralow latency pattern recognition while reducing dynamic energy dissipation."""
+        ),
+        (
+            "Fusion Stellarator",
+            """Nuclear Fusion Laboratory: Helical Stellarator Plasma Confinement Experiment_{unique_tag}
+Superconducting magnet coils generated non-axisymmetric magnetic fields to confine high-temperature deuterium plasma.
+Thomson scattering lasers measured core electron temperature profiles and radial pressure gradients.
+Neutral beam injection heated the fusion plasma beyond thermal breakeven without generating current-driven disruptions.""",
+            """Fusion Research Digest: Stellarator Magnetic Confinement Summary_{unique_tag}
+High-temperature deuterium plasma was confined using non-axisymmetric magnetic fields from superconducting stellarator coils.
+Core electron temperatures and radial pressure gradients were evaluated via Thomson scattering diagnostics.
+Neutral beam injection heating achieved elevated plasma temperatures while suppressing magnetohydrodynamic current instabilities."""
+        ),
+        (
+            "Quantum Lattice",
+            """Quantum Optics Laboratory: Rubidium Atom Optical Lattice Entanglement Study_{unique_tag}
+In our cryogenic vacuum chamber, laser cooled rubidium atoms were loaded into a three-dimensional optical lattice.
+High numerical aperture objectives imaged single-site fluorescence, resolving individual quantum spin states and tunneling dynamics.
+Coherent microwave pulses manipulated hyperfine ground states, demonstrating high-fidelity quantum entanglement across adjacent lattice sites.""",
+            """Laboratory Digest: Optical Lattice Quantum Spin Entanglement Summary_{unique_tag}
+Researchers loaded laser cooled rubidium atoms into three-dimensional optical lattices within a cryogenic vacuum chamber.
+High numerical aperture imaging resolved single-site fluorescence, tracking quantum tunneling dynamics and spin states.
+Microwave pulse manipulation of hyperfine ground states demonstrated high-fidelity quantum entanglement between lattice sites."""
+        ),
+    ]
+    seed_idx = (int(time.time()) + int(uuid.uuid4().hex[:4], 16)) % len(topic_seeds)
+    domain_title, raw_t1, raw_t2 = topic_seeds[seed_idx]
+    unique_tag = uuid.uuid4().hex[:6]
+
     print("\n=== 2. Testing Unique Upload & TF-IDF Salient Keyword Extraction ===")
-    fname_v1 = f"cyber_incident_report_{timestamp}_alpha.txt"
-    text_v1 = f"""
-    Cyber Incident Response: Adversarial Network Intrusion Vector Analysis Session_{timestamp}
-    During the forensic investigation of the security breach, analysts detected lateral movement and privilege escalation across domain controllers.
-    Malicious actors deployed credential dumping tools and established encrypted command-and-control tunnels to exfiltrate database records.
-    Our incident response protocol isolated compromised endpoints and revoked compromised API tokens, mitigating further exfiltration.
-    """
+    fname_v1 = f"{domain_title.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_alpha.txt"
+    text_v1 = raw_t1.format(unique_tag=unique_tag)
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
-        {"classification": "PUBLIC", "description": f"Cyber Incident Analysis {timestamp}"},
-        {"file": (fname_v1, content_v1, "text/plain")}
+        {"classification": "PUBLIC", "description": f"{domain_title} Survey {unique_tag}"},
+        {"file": (fname_v1, content_v1, "text/plain")},
     )
     h_upload = headers.copy()
     h_upload["Content-Type"] = ct
     status, res = make_request("POST", "/datasets/upload", data=body, headers=h_upload, is_json=False)
     assert status == 200, f"Upload failed ({status}): {res.decode('utf-8')}"
     res_json = json.loads(res.decode("utf-8"))
-    
+
     assert res_json["duplicate"] is False, f"Expected unique upload, got: {res_json}"
     assert res_json["match_type"] == "UNIQUE"
     assert len(res_json["top_keywords"]) > 0, "Expected extracted TF-IDF keywords"
@@ -106,18 +140,13 @@ def run_tfidf_tests():
 
     print("\n=== 3. Testing Plagiarism & TF-IDF Cosine Similarity Matching ===")
     # Version 2 is completely rewritten in sentence structure and has a different filename, but shares the domain vocabulary
-    fname_v2 = f"forensic_breach_digest_{timestamp}_beta.txt"
-    text_v2 = f"""
-    Executive Digest: Network Intrusion and Forensic Investigation Summary Session_{timestamp}
-    Forensic assessment of the cybersecurity breach revealed credential dumping and lateral movement targeting domain controllers.
-    Adversaries attempted privilege escalation and created encrypted command-and-control tunnels to facilitate database exfiltration.
-    Incident response teams isolated compromised endpoints and revoked authorization tokens to contain the threat.
-    """
+    fname_v2 = f"{domain_title.lower().replace(' ', '_')}_digest_{timestamp}_{unique_tag}_beta.txt"
+    text_v2 = raw_t2.format(unique_tag=unique_tag)
     content_v2 = text_v2.encode("utf-8")
 
     body_dup, ct_dup = encode_multipart_formdata(
         {"classification": "PUBLIC"},
-        {"file": (fname_v2, content_v2, "text/plain")}
+        {"file": (fname_v2, content_v2, "text/plain")},
     )
     h_dup = headers.copy()
     h_dup["Content-Type"] = ct_dup

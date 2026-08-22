@@ -744,6 +744,96 @@ Verified via automated test suite `verify_fuzzy_similarity.py`:
 
 ### 14.7 Not Yet Done / Deferred
 
-- Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity indexing).
+- Stage 9: LSH (Locality-Sensitive Hashing for sub-linear similarity indexing) — completed in Stage 9.
 - Stage 10: Audit logging on access denials and download events.
 - Stage 14: Comprehensive inner application UI & dashboard redesign.
+
+---
+
+## 15. Stage 9 — Locality-Sensitive Hashing (LSH) Indexing — Complete
+
+### 15.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── lsh_engine.py          ← Stage 9 (new): SimHash 4-band partitioning, MinHash 16-band hashing, TF-IDF keyword & column inverted indexing, in-memory LSHMemoryIndex
+│   ├── fuzzy_engine.py        ← Stage 8: 64-bit SimHash, MinHash, Hamming distance
+│   ├── tfidf_engine.py        ← Stage 7: TF-IDF vectorization, Cosine similarity, salient keywords
+│   ├── metadata_extractor.py  ← Stage 6: Schema and row extraction
+│   ├── similarity.py          ← Stage 6: Metadata multi-attribute similarity
+│   ├── main.py                ← Stage 9: Sub-linear O(1) candidate retrieval via lsh_buckets table, automated indexing, GET /lsh/stats, POST /lsh/backfill
+│   ├── models.py              ← Stage 9: Added LSHBucket model (dataset_id, band_type, band_index, bucket_key) with cascade delete
+│   ├── storage.py             ← Content-Addressable Storage (CAS)
+│   ├── authorization.py       ← RBAC & Classification clearances
+│   ├── database.py            ← SQLAlchemy database session
+│   ├── auth.py                ← JWT authentication routes
+│   └── security.py            ← Password hashing and JWT helpers
+├── native/
+│   └── simhash_core.cpp       ← Stage 8: High-performance C++ SIMD bitwise popcount kernel
+├── alembic/
+│   └── versions/
+│       ├── f18a4c87b921_add_lsh_buckets_table.py                         ← Stage 9 migration
+│       ├── d475e505391a_add_fuzzy_simhash_and_minhash_columns_to_datasets.py ← Stage 8 migration
+│       ├── 1648add5d368_add_tfidf_content_columns_to_datasets.py             ← Stage 7 migration
+│       └── e799d8505dcd_add_metadata_columns_to_datasets.py                 ← Stage 6 migration
+├── verify_cas_and_rbac.py     ← Stage 5 verification test suite
+├── verify_metadata_similarity.py ← Stage 6 verification test suite
+├── verify_tfidf_content_similarity.py ← Stage 7 verification test suite
+├── verify_fuzzy_similarity.py ← Stage 8 verification test suite
+└── verify_lsh_indexing.py     ← Stage 9 (new): Comprehensive LSH banding, candidate pruning & telemetry test suite
+frontend/
+└── src/
+    └── App.jsx                ← Frontend operations console
+```
+
+### 15.2 Concept: Sub-Linear Candidate Retrieval & Indexing
+
+Prior to Stage 9, near-duplicate detection evaluated incoming uploads by performing an $O(N)$ linear scan over all datasets in the database. In Stage 9, **Locality-Sensitive Hashing (LSH)** and multi-tier inverted indexing enable sub-linear $O(1)$ candidate retrieval:
+
+1. **SimHash 4-Band Partitioning ($b=4, r=16$):**
+   - Partitions 64-bit SimHash into 4 chunks of 16 bits each.
+   - **Pigeonhole Principle:** If Hamming distance $d \le 3$ bits, at least one 16-bit band is guaranteed to have 0 bit flips ($d_i = 0$), guaranteeing an exact bucket collision.
+2. **MinHash 16-Band Partitioning ($b=16, r=4$):**
+   - Partitions 64 permutation signatures into 16 bands of 4 rows.
+   - **S-Curve Collision Probability:** $P(\text{collision}) = 1 - (1 - s^4)^{16}$, providing $>99.9\%$ collision rate for high Jaccard similarity ($s \ge 0.80$) while pruning dissimilar documents ($s \le 0.20$) with $>97.5\%$ efficiency.
+3. **Keyword & Schema Inverted Indexing:**
+   - Indexes top TF-IDF salient keywords (`kw_<token>`) and tabular column headers (`col_<header>`) in the same unified bucket table.
+4. **Sub-linear Candidate Query:**
+   - On upload, incoming bucket keys are extracted and queried via indexed SQL `LSHBucket.bucket_key.in_(incoming_keys)` in $O(1)$ time.
+   - Fine-grained Hamming distance, Cosine similarity, and Jaccard schema evaluations run only on the pruned candidate pool.
+
+### 15.3 Database Design & Migration (`f18a4c87b921`)
+
+Created table `lsh_buckets`:
+- `id` (`Integer`, primary key, index)
+- `dataset_id` (`Integer`, ForeignKey `datasets.id` on delete CASCADE, index)
+- `band_type` (`String(10)`, non-nullable): `'SIMHASH'`, `'MINHASH'`, `'KEYWORD'`, `'COLUMN'`
+- `band_index` (`Integer`, non-nullable): Index within band partition
+- `bucket_key` (`String(64)`, index, non-nullable): Formatted bucket hash key
+- Composite index on `(bucket_key, band_type)` for ultra-fast candidate resolution.
+
+### 15.4 Telemetry & Administration Endpoints
+
+- `GET /lsh/stats`: Returns real-time telemetry including total bucket postings, unique bucket keys, indexed datasets, postings per dataset, and collision density.
+- `POST /lsh/backfill`: Automated backfill endpoint to index historical database records into `lsh_buckets`.
+
+### 15.5 Verified Working (End-to-End)
+
+Verified via automated test suite `verify_lsh_indexing.py`:
+1. **Mathematical Banding & Pigeonhole Guarantee:** 4 SimHash bands verified with exact collisions on bit-mutated signatures.
+2. **In-Memory LSH Index (`LSHMemoryIndex`):** Sub-millisecond candidate lookup and index pruning verified.
+3. **Automated Bucket Persistence:** Uploading a document automatically registers ~20 LSH bucket entries in PostgreSQL.
+4. **End-to-End Duplicate Detection:** Mutated documents successfully matched existing base records via LSH candidate retrieval.
+5. **Candidate Pruning Efficiency:** On a simulated benchmark corpus, candidate search space was reduced by **99.01%** ($> 85.0\%$ target), executing duplicate scans on only relevant candidate pairs.
+6. **Full 5-Stage Regression Suite:** All 5 test suites (`verify_cas_and_rbac.py`, `verify_metadata_similarity.py`, `verify_tfidf_content_similarity.py`, `verify_fuzzy_similarity.py`, `verify_lsh_indexing.py`) pass with 100% success rate.
+
+### 15.6 Not Yet Done / Deferred
+
+- Stage 10: Security Audit Logging & Compliance Ledger.
+- Stage 11: Statistical & Behavioral Anomaly Detection (Z-Score, Burst Detection).
+- Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
+- Stage 13: Distributed Redis Caching & Async Background Queue.
+- Stage 14: Comprehensive Frontend Modularization & Cyber-Ops Dashboard.
+- Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+

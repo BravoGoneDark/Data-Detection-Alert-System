@@ -2,7 +2,7 @@ import hashlib
 import json
 from datetime import datetime, timezone
 from app.auth import router as auth_router, get_current_user
-from app.models import User, Dataset
+from app.models import User, Dataset, LSHBucket
 from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +28,13 @@ from app.fuzzy_engine import (
     compute_simhash_similarity,
     compute_minhash,
     compute_minhash_jaccard,
+    parse_minhash_json,
+)
+from app.lsh_engine import (
+    extract_all_lsh_keys,
+    generate_simhash_bucket_keys,
+    generate_minhash_bucket_keys,
+    LSHMemoryIndex,
 )
 
 app = FastAPI(title="DDAS - Data Duplicate Analysis System")
@@ -149,6 +156,42 @@ def parse_keywords_json_legacy(json_str: str | None) -> list[str]:
         return []
 
 
+def index_dataset_lsh_buckets(
+    db: Session,
+    dataset_id: int,
+    simhash_val: str | int | None = None,
+    minhash_sig: list[int] | str | None = None,
+    top_keywords: list[str] | None = None,
+    columns: list[str] | None = None,
+) -> int:
+    """
+    Extracts and persists all SimHash, MinHash, Keyword, and Column LSH bucket entries for a dataset.
+    Enables sub-linear O(1) candidate retrieval during future uploads.
+    """
+    # Clear existing bucket postings for this dataset if re-indexing
+    db.query(LSHBucket).filter(LSHBucket.dataset_id == dataset_id).delete()
+
+    lsh_keys = extract_all_lsh_keys(
+        simhash_val=simhash_val,
+        minhash_sig=minhash_sig,
+        top_keywords=top_keywords,
+        columns=columns,
+    )
+    bucket_objs = [
+        LSHBucket(
+            dataset_id=dataset_id,
+            band_type=band_type,
+            band_index=band_index,
+            bucket_key=bucket_key,
+        )
+        for band_type, band_index, bucket_key in lsh_keys
+    ]
+    if bucket_objs:
+        db.add_all(bucket_objs)
+        db.commit()
+    return len(bucket_objs)
+
+
 @app.post("/datasets/upload", response_model=UploadResult)
 async def upload_dataset(
     file: UploadFile = File(...),
@@ -229,9 +272,33 @@ async def upload_dataset(
             existing=existing_info,
         )
 
-    # 4. Check for Fuzzy Fingerprint, Content Cosine, and Metadata Similarity
+    # 4. Check for Fuzzy Fingerprint, Content Cosine, and Metadata Similarity via LSH Candidate Retrieval
     if not force:
-        all_candidates = db.query(Dataset).all()
+        # Generate LSH & inverted index bucket keys for incoming file
+        incoming_lsh_keys = extract_all_lsh_keys(
+            simhash_val=simhash_hex,
+            minhash_sig=minhash_sig,
+            top_keywords=top_kw,
+            columns=meta.columns,
+        )
+        incoming_key_strings = [k[2] for k in incoming_lsh_keys]
+
+        # Sub-linear candidate lookup via indexed LSH bucket table
+        lsh_cand_tuples = (
+            db.query(LSHBucket.dataset_id)
+            .filter(LSHBucket.bucket_key.in_(incoming_key_strings))
+            .distinct()
+            .all()
+        )
+        lsh_candidate_ids = {t[0] for t in lsh_cand_tuples}
+
+        total_dataset_count = db.query(Dataset).count()
+        # For small inventories (<= 30) or cold start without matches, gracefully fallback to full set
+        if total_dataset_count <= 30 or not lsh_candidate_ids:
+            candidates_to_check = db.query(Dataset).all()
+        else:
+            candidates_to_check = db.query(Dataset).filter(Dataset.id.in_(lsh_candidate_ids)).all()
+
         storage = get_storage()
 
         best_meta_candidate = None
@@ -246,7 +313,7 @@ async def upload_dataset(
         best_fuzzy_score = 0.0
         best_hamming_dist = 64
 
-        for candidate in all_candidates:
+        for candidate in candidates_to_check:
             if candidate.uploader_id != current_user.id and not can_user_access_classification(current_user, candidate.classification):
                 continue
 
@@ -296,7 +363,7 @@ async def upload_dataset(
                     best_shared_keywords = get_shared_keywords(tfidf_vec, cand_vec, top_n=6)
 
         # Tabular datasets with structured column schemas (>= 2 columns) prioritize Structural / Metadata Schema Matching
-        has_schema = bool(len(meta.columns) >= 2 or (best_meta_candidate and len(parse_db_columns(best_meta_candidate.columns_json)) >= 2))
+        has_schema = bool(len(meta.columns) >= 2)
 
         # Priority 1 (Tabular): High Metadata / Schema Similarity (>= 70.0%)
         if has_schema and best_meta_candidate and best_meta_score >= 70.0:
@@ -507,6 +574,16 @@ async def upload_dataset(
     db.commit()
     db.refresh(new_dataset)
 
+    # 7. Index dataset in LSH bucket table for O(1) future candidate retrieval
+    index_dataset_lsh_buckets(
+        db,
+        new_dataset.id,
+        simhash_val=simhash_hex,
+        minhash_sig=minhash_sig,
+        top_keywords=top_kw,
+        columns=meta.columns,
+    )
+
     return UploadResult(
         id=new_dataset.id,
         filename=new_dataset.filename,
@@ -602,3 +679,81 @@ async def download_dataset(
         filename=dataset.filename,
         media_type="application/octet-stream",
     )
+
+
+@app.get("/lsh/stats")
+async def get_lsh_statistics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:view")),
+):
+    """
+    Returns telemetry metrics for the Locality-Sensitive Hashing (LSH) index.
+    """
+    total_entries = db.query(LSHBucket).count()
+    unique_keys = db.query(LSHBucket.bucket_key).distinct().count()
+    indexed_datasets = db.query(LSHBucket.dataset_id).distinct().count()
+    simhash_entries = db.query(LSHBucket).filter(LSHBucket.band_type == "SIMHASH").count()
+    minhash_entries = db.query(LSHBucket).filter(LSHBucket.band_type == "MINHASH").count()
+
+    avg_buckets = round(total_entries / max(1, indexed_datasets), 2)
+    collision_density = round(total_entries / max(1, unique_keys), 2)
+
+    return {
+        "status": "active",
+        "total_bucket_entries": total_entries,
+        "unique_bucket_keys": unique_keys,
+        "indexed_datasets_count": indexed_datasets,
+        "simhash_entries": simhash_entries,
+        "minhash_entries": minhash_entries,
+        "avg_buckets_per_dataset": avg_buckets,
+        "collision_density": collision_density,
+        "simhash_config": {"bands": 4, "bits_per_band": 16},
+        "minhash_config": {"bands": 16, "rows_per_band": 4},
+    }
+
+
+@app.post("/lsh/backfill")
+async def backfill_lsh_buckets(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:upload")),
+):
+    """
+    Backfills LSH bucket index entries for all datasets currently stored in PostgreSQL.
+    """
+    all_datasets = db.query(Dataset).all()
+    storage = get_storage()
+    backfilled_count = 0
+
+    for d in all_datasets:
+        sim_val = d.simhash
+        min_val = parse_minhash_json(d.minhash_json)
+        top_kw = parse_keywords_json(d.top_keywords_json)
+        cols = parse_db_columns(d.columns_json)
+
+        # Lazy compute missing signatures if storage file exists
+        if (not sim_val or not min_val) and d.storage_path and storage.file_exists(d.storage_path):
+            bytes_data = storage.read_file(d.storage_path)
+            text = extract_text_content(d.filename, bytes_data)
+            if not sim_val:
+                _, sim_val = compute_simhash_64(text if text else d.filename)
+                d.simhash = sim_val
+            if not min_val:
+                min_val = compute_minhash(text if text else d.filename)
+                d.minhash_json = json.dumps(min_val)
+            db.commit()
+
+        index_dataset_lsh_buckets(
+            db,
+            d.id,
+            simhash_val=sim_val,
+            minhash_sig=min_val,
+            top_keywords=top_kw,
+            columns=cols,
+        )
+        backfilled_count += 1
+
+    return {
+        "message": f"Successfully indexed LSH buckets for {backfilled_count} datasets",
+        "indexed_datasets": backfilled_count,
+        "status": "complete",
+    }
