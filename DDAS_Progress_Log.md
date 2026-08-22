@@ -936,10 +936,129 @@ Added interactive **Security Audit Ledger & Compliance Telemetry Modal** in `App
 
 ### 16.7 Not Yet Done / Deferred
 
-- Stage 11: Statistical & Behavioral Anomaly Detection (Z-Score, Burst Detection, Entropy Drift).
+- Stage 11: Completed below.
 - Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
 - Stage 13: Distributed Redis Caching & Async Background Queue.
-- Stage 14: Comprehensive Frontend Modularization & Cyber-Ops Dashboard.
+- Stage 14: Comprehensive Cyber-Ops UI & Layout Stabilization.
 - Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+
+---
+
+## 17. Stage 11 — Statistical & Behavioral Anomaly Detection Engine (Completed)
+
+### 17.1 Layman's Summary & Core Purpose
+
+In zero-trust security and data protection, access controls (passwords and role clearance) are only the first line of defense. If an authorized user account is compromised or an insider goes rogue, standard permissions will not block them from quietly siphoning data.
+
+**Stage 11 introduces a Statistical & Behavioral Anomaly Detection Engine** that acts as an intelligent watchdog over all file download activity:
+- It profiles the normal activity baseline ($\mu, \sigma$) for every user.
+- It calculates standard statistical deviation ($Z$-Scores) and sliding-window burst velocity.
+- If a user downloads excessive volumes ($Z \ge 3.0$), triggers automated rapid scraping ($> 4$ files in 30 seconds), accesses data at odd hours, or shifts to sensitive classifications, the engine flags an incident in an **Anomaly Defense Ledger** with a composite risk score $(0 - 100)$ for security analysts.
+
+```
+                         ┌─────────────────────────────────────────┐
+                         │     USER INITIATES DATASET DOWNLOAD     │
+                         └────────────────────┬────────────────────┘
+                                              │
+              ┌───────────────────────────────┴───────────────────────────────┐
+              ▼                                                               ▼
+   [1. Rolling Z-Score Engine]                                    [2. Sliding Window Burst Detector]
+   • User download frequency $(\mu, \sigma)$                       • Sliding 60s & 5m windows
+   • Standardized Score: $Z = \frac{x - \mu}{\sigma}$             • Flags velocity surges (>= 4 downloads / 30s)
+   • Flags anomaly when $Z \ge 3.0$                               • Catches automated bot exfiltration
+              │                                                               │
+              └───────────────────────────────┬───────────────────────────────┘
+                                              │
+              ┌───────────────────────────────┴───────────────────────────────┐
+              ▼                                                               ▼
+   [3. Off-Hours Temporal Anomaly]                                [4. Classification Drift Detector]
+   • Baseline operational profile (07:00 - 21:00)                  • Tracks sensitivity distribution
+   • Flags atypical off-hours downloads (23:00 - 05:00 UTC)       • Flags sudden shift to RESTRICTED data
+              │                                                               │
+              └───────────────────────────────┬───────────────────────────────┘
+                                              ▼
+                             ┌──────────────────────────────────┐
+                             │    `app/anomaly_detector.py`     │
+                             │  • Statistical calculation       │
+                             │  • Composite risk scoring (0-100)│
+                             │  • Threat severity classification│
+                             └────────────────┬─────────────────┘
+                                              ▼
+                             ┌──────────────────────────────────┐
+                             │ PostgreSQL: `anomaly_events`     │
+                             │ (Status: ACTIVE / INVESTIGATING) │
+                             └────────────────┬─────────────────┘
+                                              ▼
+                             ┌──────────────────────────────────┐
+                             │  `GET /admin/anomalies`          │
+                             │  `GET /admin/anomalies/stats`    │
+                             │  `POST /admin/anomalies/{id}`    │
+                             └──────────────────────────────────┘
+```
+
+### 17.2 Mathematical Formulations
+
+1. **Standardized Frequency Z-Score:**
+   $$Z = \frac{x - \mu}{\sigma}$$
+   Where:
+   - $x$: Current hourly download count.
+   - $\mu$: Historical rolling average downloads per hour for this user.
+   - $\sigma$: Historical standard deviation ($\sigma \ge 1.0$).
+   - $Z \ge 3.0$: Triggers a **HIGH** / **CRITICAL** statistical outlier alert ($99.7\%$ confidence deviation).
+
+2. **Sliding-Window Burst Velocity:**
+   - **30-Second Window:** $\ge 4$ downloads triggers `HIGH_VELOCITY_BURST_30S` (Severity: `CRITICAL`).
+   - **5-Minute Window:** $\ge 12$ downloads triggers `BULK_EXFILTRATION_5M` (Severity: `HIGH`).
+
+3. **Composite Anomaly Risk Score ($0 - 100$):**
+   $$\text{Risk Score} = \min\left(100, 50.0 + (Z \times 10.0)\right)$$
+
+### 17.3 Database Design & Migration (`3bef587b4f51`)
+
+Created table `anomaly_events`:
+- `id` (`Integer`, primary key, index)
+- `timestamp` (`DateTime(timezone=True)`, server default `now()`, index, non-nullable)
+- `user_id` (`Integer`, ForeignKey `users.id` on delete `SET NULL`, index, nullable)
+- `username` (`String`, index, non-nullable)
+- `dataset_id` (`Integer`, ForeignKey `datasets.id` on delete `SET NULL`, index, nullable)
+- `dataset_filename` (`String`, nullable)
+- `anomaly_type` (`String(32)`, index, non-nullable): `'Z_SCORE_SPIKE'`, `'BURST_EXFILTRATION'`, `'OFF_HOURS_ACCESS'`, `'CLASSIFICATION_DRIFT'`
+- `severity` (`String(10)`, index, non-nullable): `'LOW'`, `'MEDIUM'`, `'HIGH'`, `'CRITICAL'`
+- `z_score` (`Float`, nullable)
+- `risk_score` (`Float`, non-nullable, default `0.0`)
+- `status` (`String(16)`, index, non-nullable, default `'ACTIVE'`): `'ACTIVE'`, `'INVESTIGATING'`, `'RESOLVED'`, `'FALSE_POSITIVE'`
+- `details_json` (`String`, nullable): JSON-encoded forensic context payload
+
+### 17.4 Anomaly Defense Endpoints
+
+- `GET /admin/anomalies`: Lists recorded anomalies with query parameters `severity`, `status`, `anomaly_type`, `username`, `limit`, `offset`.
+- `GET /admin/anomalies/stats`: Returns real-time threat posture: `total_anomalies`, `active_threats`, `severity_breakdown`, `anomaly_type_breakdown`, `status_breakdown`, and `highest_risk_users` watchlist.
+- `POST /admin/anomalies/{anomaly_id}/resolve`: Analyst resolution workflow (`INVESTIGATING`, `RESOLVED`, `FALSE_POSITIVE`) with audit logging.
+
+### 17.5 Verification & Regression Results
+
+Verified via automated test suite `verify_anomaly_detection.py`:
+1. **User Setup & Baseline Establishment:** Authenticated Analyst & Admin accounts created.
+2. **Normal Single Download (Baseline):** Single download processed cleanly below anomaly threshold.
+3. **High-Velocity Burst Surge:** Rapid burst of downloads automatically intercepted as `BURST_EXFILTRATION` (CRITICAL) and `Z_SCORE_SPIKE` (CRITICAL).
+4. **Threat Posture & Risk Watchlist:** `GET /admin/anomalies/stats` verified active threats and user ranking on Security Watchlist.
+5. **Status Management & Resolution:** Anomaly transitioned to `INVESTIGATING` and `RESOLVED` with decremented active threat telemetry.
+6. **Full 7-Stage Regression Suite:** All 7 test suites pass 100%:
+   - `verify_cas_and_rbac.py` -> 100% PASSED
+   - `verify_metadata_similarity.py` -> 100% PASSED
+   - `verify_tfidf_content_similarity.py` -> 100% PASSED
+   - `verify_fuzzy_similarity.py` -> 100% PASSED
+   - `verify_lsh_indexing.py` -> 100% PASSED
+   - `verify_audit_logging.py` -> 100% PASSED
+   - `verify_anomaly_detection.py` -> 100% PASSED
+7. **Strict Line Limit Compliance:** Every code file across frontend and backend is strictly $\le 366$ lines (max limit 400 lines).
+
+### 17.6 Not Yet Done / Deferred
+
+- Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
+- Stage 13: Distributed Redis Caching & Async Background Queue.
+- Stage 14: Comprehensive Cyber-Ops UI & Layout Stabilization.
+- Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+
 
 

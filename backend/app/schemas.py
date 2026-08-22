@@ -106,3 +106,42 @@ class AuditStatsResponse(BaseModel):
     severity_breakdown: dict[str, int]
     event_type_breakdown: dict[str, int]
     top_denied_users: list[dict[str, Any]]
+
+
+class AnomalyEventOut(BaseModel):
+    id: int
+    timestamp: datetime
+    user_id: Optional[int] = None
+    username: str
+    dataset_id: Optional[int] = None
+    dataset_filename: Optional[str] = None
+    anomaly_type: str
+    severity: str
+    z_score: Optional[float] = None
+    risk_score: float
+    status: str
+    details_json: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AnomalyEventsResponse(BaseModel):
+    total: int
+    count: int
+    anomalies: list[AnomalyEventOut]
+
+
+class AnomalyStatsResponse(BaseModel):
+    total_anomalies: int
+    active_threats: int
+    severity_breakdown: dict[str, int]
+    anomaly_type_breakdown: dict[str, int]
+    status_breakdown: dict[str, int]
+    highest_risk_users: list[dict[str, Any]]
+
+
+class AnomalyResolveRequest(BaseModel):
+    status: str  # "INVESTIGATING", "RESOLVED", "FALSE_POSITIVE"
+    notes: Optional[str] = None
+

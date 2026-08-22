@@ -1,3 +1,4 @@
+// frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthenticationPage from './components/auth/AuthenticationPage';
@@ -8,6 +9,8 @@ import UploadDropzone from './components/dashboard/UploadDropzone';
 import DatasetInventory from './components/dashboard/DatasetInventory';
 import AuditLedgerModal from './components/modals/AuditLedgerModal';
 import LshArchitectureModal from './components/modals/LshArchitectureModal';
+import AnomalyDefenseModal from './components/modals/AnomalyDefenseModal';
+import { useSecurityFeeds } from './hooks/useSecurityFeeds';
 
 function UploadPanel() {
   const { token, logout } = useAuth();
@@ -28,103 +31,21 @@ function UploadPanel() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(6);
 
-  // Stage 9 LSH Telemetry State
-  const [lshStats, setLshStats] = useState(null);
-  const [loadingLsh, setLoadingLsh] = useState(false);
-  const [backfillingLsh, setBackfillingLsh] = useState(false);
-  const [lshSuccessMsg, setLshSuccessMsg] = useState(null);
+  // Modal Visibility State
   const [showLshModal, setShowLshModal] = useState(false);
-
-  // Stage 10 Security Audit Logging & Compliance Ledger State
   const [showAuditModal, setShowAuditModal] = useState(false);
-  const [auditLogs, setAuditLogs] = useState([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [auditStats, setAuditStats] = useState(null);
-  const [loadingAudit, setLoadingAudit] = useState(false);
-  const [auditSeverity, setAuditSeverity] = useState('');
-  const [auditEventType, setAuditEventType] = useState('');
-  const [auditUserFilter, setAuditUserFilter] = useState('');
+  const [showAnomalyModal, setShowAnomalyModal] = useState(false);
 
-  const fetchAuditLogs = async () => {
-    if (!token) return;
-    setLoadingAudit(true);
-    try {
-      const params = new URLSearchParams();
-      if (auditSeverity) params.append('severity', auditSeverity);
-      if (auditEventType) params.append('event_type', auditEventType);
-      if (auditUserFilter) params.append('username', auditUserFilter);
-      params.append('limit', '50');
-
-      const [logsRes, statsRes] = await Promise.all([
-        fetch(`${API_URL}/admin/audit-logs?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-        fetch(`${API_URL}/admin/audit-logs/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
-        }),
-      ]);
-
-      if (logsRes.ok) {
-        const data = await logsRes.json();
-        setAuditLogs(data.logs || []);
-        setAuditTotal(data.total || 0);
-      }
-      if (statsRes.ok) {
-        const data = await statsRes.json();
-        setAuditStats(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch audit logs:', err);
-    } finally {
-      setLoadingAudit(false);
-    }
-  };
+  // Security Telemetry Feeds Hook
+  const feeds = useSecurityFeeds(token);
 
   useEffect(() => {
-    if (showAuditModal && token) {
-      fetchAuditLogs();
-    }
-  }, [showAuditModal, auditSeverity, auditEventType, auditUserFilter, token]);
+    if (showAuditModal && token) feeds.fetchAuditLogs();
+  }, [showAuditModal, feeds.auditSeverity, feeds.auditEventType, feeds.auditUserFilter, token]);
 
-  const fetchLshStats = async () => {
-    if (!token) return;
-    setLoadingLsh(true);
-    try {
-      const res = await fetch(`${API_URL}/lsh/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLshStats(data);
-      }
-    } catch (err) {
-      console.error('Failed to fetch LSH stats:', err);
-    } finally {
-      setLoadingLsh(false);
-    }
-  };
-
-  const handleLshBackfill = async () => {
-    if (!token) return;
-    setBackfillingLsh(true);
-    setLshSuccessMsg(null);
-    try {
-      const res = await fetch(`${API_URL}/lsh/backfill`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLshSuccessMsg(data.message || 'LSH backfill complete!');
-        await fetchLshStats();
-        setTimeout(() => setLshSuccessMsg(null), 5000);
-      }
-    } catch (err) {
-      setError('Failed to backfill LSH buckets: ' + err.message);
-    } finally {
-      setBackfillingLsh(false);
-    }
-  };
+  useEffect(() => {
+    if ((showAnomalyModal || token) && token) feeds.fetchAnomalies();
+  }, [showAnomalyModal, feeds.anomalySeverity, feeds.anomalyStatus, feeds.anomalyType, feeds.anomalyUserFilter, token]);
 
   const fetchDatasets = async () => {
     if (!token) return;
@@ -149,24 +70,26 @@ function UploadPanel() {
   };
 
   useEffect(() => {
-    fetchDatasets();
-    fetchLshStats();
+    if (token) {
+      fetchDatasets();
+      feeds.fetchLshStats();
+      feeds.fetchAnomalies();
+    }
   }, [token]);
 
-  const handleUpload = async (forceOverride = false) => {
-    if (!file) {
-      setError('Please select a file');
-      return;
-    }
+  const handleUpload = async (e, forceUpload = false) => {
+    if (e) e.preventDefault();
+    if (!file) return;
+
     setLoading(true);
     setError(null);
-    if (!forceOverride) setResult(null);
+    if (!forceUpload) setResult(null);
 
     const formData = new FormData();
     formData.append('file', file);
     formData.append('classification', classification);
     if (description) formData.append('description', description);
-    if (forceOverride) formData.append('force_override', 'true');
+    if (forceUpload) formData.append('force', 'true');
 
     try {
       const response = await fetch(`${API_URL}/datasets/upload`, {
@@ -180,27 +103,32 @@ function UploadPanel() {
         return;
       }
 
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Upload failed');
+      }
+
       const data = await response.json();
-      if (response.ok) {
-        setResult(data);
-        if (!data.duplicate || forceOverride) {
-          await fetchDatasets();
-          await fetchLshStats();
-          if (forceOverride) {
-            setFile(null);
-          }
-        }
-      } else {
-        setError(data.detail || 'Upload failed');
+      setResult(data);
+
+      if (!data.duplicate || forceUpload) {
+        setFile(null);
+        setDescription('');
+        const fileInput = document.getElementById('file-upload');
+        if (fileInput) fileInput.value = '';
+        await fetchDatasets();
+        await feeds.fetchLshStats();
+        await feeds.fetchAnomalies();
       }
     } catch (err) {
-      setError('Upload failed: ' + err.message);
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleDownload = async (datasetId, filename) => {
+    if (!token) return;
     setDownloadingId(datasetId);
     setError(null);
     try {
@@ -208,15 +136,19 @@ function UploadPanel() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (response.status === 403) {
-        const data = await response.json();
-        setError(`Access Denied: ${data.detail || 'Insufficient clearance level to download this dataset.'}`);
+      if (response.status === 401) {
+        logout();
         return;
       }
 
+      if (response.status === 403) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(`[SECURITY ALERT 403] ${errData.detail || 'Access denied: Clearance insufficient'}`);
+      }
+
       if (!response.ok) {
-        setError('Download failed with status ' + response.status);
-        return;
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.detail || 'Download failed');
       }
 
       const blob = await response.blob();
@@ -227,86 +159,71 @@ function UploadPanel() {
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
-      a.remove();
+      document.body.removeChild(a);
+
       await fetchDatasets();
+      await feeds.fetchAnomalies();
     } catch (err) {
-      setError('Download failed: ' + err.message);
+      setError(err.message);
     } finally {
       setDownloadingId(null);
     }
   };
 
-  // Filter datasets by query
-  const filteredDatasets = datasets.filter((d) => {
-    if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      (d.filename && d.filename.toLowerCase().includes(q)) ||
-      (d.description && d.description.toLowerCase().includes(q)) ||
-      (d.uploader_username && d.uploader_username.toLowerCase().includes(q)) ||
-      (d.classification && d.classification.toLowerCase().includes(q)) ||
-      (d.sha256 && d.sha256.toLowerCase().includes(q)) ||
-      (d.columns && d.columns.some((c) => c.toLowerCase().includes(q))) ||
-      (d.top_keywords && d.top_keywords.some((k) => k.toLowerCase().includes(q)))
-    );
-  });
+  // Filter & Pagination computations
+  const filteredDatasets = datasets
+    .filter((d) => {
+      const q = searchQuery.toLowerCase();
+      return (
+        d.filename.toLowerCase().includes(q) ||
+        (d.classification && d.classification.toLowerCase().includes(q)) ||
+        (d.uploader_username && d.uploader_username.toLowerCase().includes(q)) ||
+        (d.top_keywords && d.top_keywords.some((k) => k.toLowerCase().includes(q)))
+      );
+    })
+    .sort((a, b) => {
+      let comparison = 0;
+      if (sortBy === 'date') comparison = new Date(b.uploaded_at) - new Date(a.uploaded_at);
+      else if (sortBy === 'size') comparison = b.size_bytes - a.size_bytes;
+      else if (sortBy === 'filename') comparison = a.filename.localeCompare(b.filename);
+      else if (sortBy === 'downloads') comparison = (b.download_count || 0) - (a.download_count || 0);
+      return sortOrder === 'asc' ? -comparison : comparison;
+    });
 
-  // Sort datasets
-  const sortedDatasets = [...filteredDatasets].sort((a, b) => {
-    let comparison = 0;
-    if (sortBy === 'date') {
-      comparison = new Date(a.uploaded_at) - new Date(b.uploaded_at);
-    } else if (sortBy === 'size') {
-      comparison = a.size_bytes - b.size_bytes;
-    } else if (sortBy === 'filename') {
-      comparison = a.filename.localeCompare(b.filename);
-    } else if (sortBy === 'uploader') {
-      comparison = (a.uploader_username || '').localeCompare(b.uploader_username || '');
-    } else if (sortBy === 'classification') {
-      const rank = { PUBLIC: 1, INTERNAL: 2, RESTRICTED: 3, CONFIDENTIAL: 4 };
-      comparison = (rank[a.classification] || 0) - (rank[b.classification] || 0);
-    } else if (sortBy === 'downloads') {
-      comparison = (a.download_count || 0) - (b.download_count || 0);
-    }
-    return sortOrder === 'asc' ? comparison : -comparison;
-  });
-
-  // Pagination calculations
-  const totalItems = sortedDatasets.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const paginatedDatasets = sortedDatasets.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const totalItems = filteredDatasets.length;
+  const totalPages = Math.ceil(totalItems / pageSize) || 1;
+  const paginatedDatasets = filteredDatasets.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const getPaginationPages = () => {
-    if (totalPages <= 5) {
-      return Array.from({ length: totalPages }, (_, i) => i + 1);
-    }
-    if (currentPage <= 3) {
-      return [1, 2, 3, 4, '...', totalPages];
-    }
-    if (currentPage >= totalPages - 2) {
-      return [1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-    }
-    return [1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages];
+    const pages = [];
+    const maxVisible = 5;
+    let start = Math.max(1, currentPage - 2);
+    let end = Math.min(totalPages, start + maxVisible - 1);
+    if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
   };
 
   return (
-    <div className="min-h-screen bg-[#05070d] text-slate-100 p-6 md:p-10">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-cyan-500 selection:text-black">
       <div className="max-w-7xl mx-auto space-y-8">
         
-        {/* Header */}
+        {/* Header Navigation Toolbar */}
         <HeaderToolbar
           onOpenAudit={() => setShowAuditModal(true)}
           onOpenLsh={() => setShowLshModal(true)}
+          onOpenAnomaly={() => setShowAnomalyModal(true)}
+          activeThreatsCount={feeds.anomalyStats?.active_threats || 0}
           onLogout={logout}
         />
 
         {/* Stage 9 LSH Telemetry Bar */}
         <LshTelemetryWidget
-          lshStats={lshStats}
-          loadingLsh={loadingLsh}
-          backfillingLsh={backfillingLsh}
-          lshSuccessMsg={lshSuccessMsg}
-          onBackfill={handleLshBackfill}
+          lshStats={feeds.lshStats}
+          loadingLsh={feeds.loadingLsh}
+          backfillingLsh={feeds.backfillingLsh}
+          lshSuccessMsg={feeds.lshSuccessMsg}
+          onBackfill={() => feeds.handleLshBackfill(setError)}
         />
 
         {/* Global Error Banner */}
@@ -318,7 +235,7 @@ function UploadPanel() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Upload Dropzone & Duplicate Alert */}
+          {/* Left Column: Upload Dropzone */}
           <div className="lg:col-span-4 space-y-6">
             <UploadDropzone
               file={file}
@@ -371,17 +288,36 @@ function UploadPanel() {
         <AuditLedgerModal
           isOpen={showAuditModal}
           onClose={() => setShowAuditModal(false)}
-          auditLogs={auditLogs}
-          auditTotal={auditTotal}
-          auditStats={auditStats}
-          loadingAudit={loadingAudit}
-          auditSeverity={auditSeverity}
-          setAuditSeverity={setAuditSeverity}
-          auditEventType={auditEventType}
-          setAuditEventType={setAuditEventType}
-          auditUserFilter={auditUserFilter}
-          setAuditUserFilter={setAuditUserFilter}
-          onRefresh={fetchAuditLogs}
+          auditLogs={feeds.auditLogs}
+          auditTotal={feeds.auditTotal}
+          auditStats={feeds.auditStats}
+          loadingAudit={feeds.loadingAudit}
+          auditSeverity={feeds.auditSeverity}
+          setAuditSeverity={feeds.setAuditSeverity}
+          auditEventType={feeds.auditEventType}
+          setAuditEventType={feeds.setAuditEventType}
+          auditUserFilter={feeds.auditUserFilter}
+          setAuditUserFilter={feeds.setAuditUserFilter}
+          onRefresh={feeds.fetchAuditLogs}
+        />
+
+        <AnomalyDefenseModal
+          isOpen={showAnomalyModal}
+          onClose={() => setShowAnomalyModal(false)}
+          anomalies={feeds.anomalies}
+          totalAnomalies={feeds.totalAnomalies}
+          anomalyStats={feeds.anomalyStats}
+          loadingAnomalies={feeds.loadingAnomalies}
+          severityFilter={feeds.anomalySeverity}
+          setSeverityFilter={feeds.setAnomalySeverity}
+          statusFilter={feeds.anomalyStatus}
+          setStatusFilter={feeds.setStatusFilter}
+          typeFilter={feeds.anomalyType}
+          setTypeFilter={feeds.setTypeFilter}
+          userFilter={feeds.anomalyUserFilter}
+          setUserFilter={feeds.setUserFilter}
+          onRefresh={feeds.fetchAnomalies}
+          token={token}
         />
 
       </div>

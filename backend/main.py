@@ -6,6 +6,7 @@ from app.auth import router as auth_router
 from app.routers.datasets import router as datasets_router
 from app.routers.lsh import router as lsh_router
 from app.routers.audit import router as audit_router
+from app.routers.anomalies import router as anomalies_router
 
 app = FastAPI(
     title="DDAS - Data Detection Alert System",
@@ -34,6 +35,7 @@ app.include_router(auth_router)
 app.include_router(datasets_router)
 app.include_router(lsh_router)
 app.include_router(audit_router)
+app.include_router(anomalies_router)
 
 
 @app.get("/")

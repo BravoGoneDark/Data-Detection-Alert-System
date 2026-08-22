@@ -24,6 +24,7 @@ from app.fuzzy_engine import (
 )
 from app.routers.lsh import index_dataset_lsh_buckets, parse_keywords_json
 from app.duplicate_evaluator import evaluate_duplicate_candidates
+from app.anomaly_detector import evaluate_download_anomaly
 from app.schemas import (
     UploadResult,
     ExistingDataset,
@@ -339,6 +340,9 @@ async def download_dataset(
             "total_downloads": dataset.download_count,
         },
     )
+
+    # Evaluate Statistical & Behavioral Download Anomalies (Z-Score, Burst, Off-Hours, Drift)
+    evaluate_download_anomaly(db=db, user=current_user, dataset=dataset, request=request)
 
     file_path = storage.get_file_path(dataset.storage_path)
     return FileResponse(
