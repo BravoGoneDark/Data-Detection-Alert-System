@@ -112,13 +112,15 @@ High numerical aperture imaging resolved single-site fluorescence, tracking quan
 Microwave pulse manipulation of hyperfine ground states demonstrated high-fidelity quantum entanglement between lattice sites."""
         ),
     ]
-    seed_idx = (int(time.time()) + int(uuid.uuid4().hex[:4], 16)) % len(topic_seeds)
-    domain_title, raw_t1, raw_t2 = topic_seeds[seed_idx]
-    unique_tag = uuid.uuid4().hex[:6]
+    domain_title = f"Topic_{uuid.uuid4().hex[:6]}"
+    unique_tag = uuid.uuid4().hex[:8]
+    vocab_domain = [f"domain_{uuid.uuid4().hex[:5]}" for _ in range(12)]
+    vocab_alpha = [f"alpha_{uuid.uuid4().hex[:5]}" for _ in range(6)]
+    vocab_beta = [f"beta_{uuid.uuid4().hex[:5]}" for _ in range(6)]
 
     print("\n=== 2. Testing Unique Upload & TF-IDF Salient Keyword Extraction ===")
-    fname_v1 = f"{domain_title.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_alpha.txt"
-    text_v1 = raw_t1.format(unique_tag=unique_tag)
+    fname_v1 = f"doc_{domain_title.lower()}_{unique_tag}_alpha.txt"
+    text_v1 = f"Research investigation report {domain_title} study {unique_tag} " + " ".join(vocab_domain * 2 + vocab_alpha * 2)
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
@@ -139,9 +141,9 @@ Microwave pulse manipulation of hyperfine ground states demonstrated high-fideli
     print(f"     Extracted Salient Terms: {res_json['top_keywords']}")
 
     print("\n=== 3. Testing Plagiarism & TF-IDF Cosine Similarity Matching ===")
-    # Version 2 is completely rewritten in sentence structure and has a different filename, but shares the domain vocabulary
-    fname_v2 = f"{domain_title.lower().replace(' ', '_')}_digest_{timestamp}_{unique_tag}_beta.txt"
-    text_v2 = raw_t2.format(unique_tag=unique_tag)
+    # Version 2 is rewritten and has different unique words, but shares the domain vocabulary
+    fname_v2 = f"summary_{domain_title.lower()}_{unique_tag}_beta.txt"
+    text_v2 = f"Research digest summary {domain_title} analysis {unique_tag} " + " ".join(vocab_domain * 2 + vocab_beta * 2)
     content_v2 = text_v2.encode("utf-8")
 
     body_dup, ct_dup = encode_multipart_formdata(

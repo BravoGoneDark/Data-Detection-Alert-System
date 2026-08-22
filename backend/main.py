@@ -1,16 +1,19 @@
 import hashlib
 import json
 from datetime import datetime, timezone
+from typing import Optional, Any
 from app.auth import router as auth_router, get_current_user
-from app.models import User, Dataset, LSHBucket
-from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException
+from app.models import User, Dataset, LSHBucket, AuditLog
+from fastapi import FastAPI, UploadFile, File, Form, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 
 from app.database import get_db
 from app.authorization import require_permission, can_user_access_classification
+from app.audit_logger import record_audit_event
 from app.storage import get_storage
 from app.metadata_extractor import extract_metadata, ExtractedMetadata
 from app.similarity import compute_metadata_similarity, parse_db_columns
@@ -140,6 +143,37 @@ class DatasetOut(BaseModel):
         from_attributes = True
 
 
+class AuditLogOut(BaseModel):
+    id: int
+    timestamp: datetime
+    user_id: Optional[int] = None
+    username: Optional[str] = None
+    event_type: str
+    severity: str
+    dataset_id: Optional[int] = None
+    dataset_filename: Optional[str] = None
+    classification: Optional[str] = None
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    action_details: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class AuditLogsResponse(BaseModel):
+    total: int
+    count: int
+    logs: list[AuditLogOut]
+
+
+class AuditStatsResponse(BaseModel):
+    total_events: int
+    severity_breakdown: dict[str, int]
+    event_type_breakdown: dict[str, int]
+    top_denied_users: list[dict[str, Any]]
+
+
 def compute_sha256(file_bytes: bytes) -> str:
     hasher = hashlib.sha256()
     hasher.update(file_bytes)
@@ -194,6 +228,7 @@ def index_dataset_lsh_buckets(
 
 @app.post("/datasets/upload", response_model=UploadResult)
 async def upload_dataset(
+    request: Request,
     file: UploadFile = File(...),
     classification: str = Form("INTERNAL"),
     description: str | None = Form(None),
@@ -226,6 +261,23 @@ async def upload_dataset(
     existing_exact = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
 
     if existing_exact and not force:
+        # Record duplicate alert in audit log
+        record_audit_event(
+            db,
+            event_type="DUPLICATE_DETECTED",
+            severity="WARNING",
+            user=current_user,
+            dataset=existing_exact,
+            classification=existing_exact.classification,
+            request=request,
+            details={
+                "match_type": "EXACT",
+                "similarity_score": 100.0,
+                "incoming_filename": file.filename,
+                "canonical_id": existing_exact.id,
+                "sha256": file_hash,
+            },
+        )
         uploader_name = existing_exact.uploader.username if existing_exact.uploader else "System"
         existing_info = ExistingDataset(
             id=existing_exact.id,
@@ -367,6 +419,22 @@ async def upload_dataset(
 
         # Priority 1 (Tabular): High Metadata / Schema Similarity (>= 70.0%)
         if has_schema and best_meta_candidate and best_meta_score >= 70.0:
+            record_audit_event(
+                db,
+                event_type="DUPLICATE_DETECTED",
+                severity="WARNING",
+                user=current_user,
+                dataset=best_meta_candidate,
+                classification=classification,
+                request=request,
+                details={
+                    "match_type": "METADATA_SIMILAR",
+                    "similarity_score": best_meta_score,
+                    "incoming_filename": file.filename,
+                    "canonical_id": best_meta_candidate.id,
+                    "score_breakdown": best_meta_breakdown,
+                },
+            )
             uploader_name = best_meta_candidate.uploader.username if best_meta_candidate.uploader else "System"
             existing_info = ExistingDataset(
                 id=best_meta_candidate.id,
@@ -410,6 +478,22 @@ async def upload_dataset(
 
         # Priority 2 (Unstructured Text): High Fuzzy SimHash Match (Hamming Distance <= 4 bits -> >= 93.7% bit match)
         if best_fuzzy_candidate and best_hamming_dist <= 4:
+            record_audit_event(
+                db,
+                event_type="DUPLICATE_DETECTED",
+                severity="WARNING",
+                user=current_user,
+                dataset=best_fuzzy_candidate,
+                classification=classification,
+                request=request,
+                details={
+                    "match_type": "FUZZY_SIMILAR",
+                    "similarity_score": best_fuzzy_score,
+                    "hamming_distance": best_hamming_dist,
+                    "incoming_filename": file.filename,
+                    "canonical_id": best_fuzzy_candidate.id,
+                },
+            )
             uploader_name = best_fuzzy_candidate.uploader.username if best_fuzzy_candidate.uploader else "System"
             existing_info = ExistingDataset(
                 id=best_fuzzy_candidate.id,
@@ -458,6 +542,22 @@ async def upload_dataset(
 
         # Priority 3 (Unstructured Text): High Content Cosine Similarity (>= 60.0%) -> Plagiarism / Content Match
         if best_content_candidate and best_content_score >= 60.0:
+            record_audit_event(
+                db,
+                event_type="DUPLICATE_DETECTED",
+                severity="WARNING",
+                user=current_user,
+                dataset=best_content_candidate,
+                classification=classification,
+                request=request,
+                details={
+                    "match_type": "CONTENT_SIMILAR",
+                    "similarity_score": best_content_score,
+                    "incoming_filename": file.filename,
+                    "canonical_id": best_content_candidate.id,
+                    "shared_keywords": best_shared_keywords,
+                },
+            )
             uploader_name = best_content_candidate.uploader.username if best_content_candidate.uploader else "System"
             existing_info = ExistingDataset(
                 id=best_content_candidate.id,
@@ -584,6 +684,38 @@ async def upload_dataset(
         columns=meta.columns,
     )
 
+    # 8. Record audit log entry
+    if force:
+        record_audit_event(
+            db,
+            event_type="DUPLICATE_OVERRIDE",
+            severity="WARNING",
+            user=current_user,
+            dataset=new_dataset,
+            classification=new_dataset.classification,
+            request=request,
+            details={
+                "action": "force_upload_registered_alias",
+                "filename": new_dataset.filename,
+                "sha256": new_dataset.sha256,
+            },
+        )
+    else:
+        record_audit_event(
+            db,
+            event_type="DATASET_UPLOAD",
+            severity="INFO",
+            user=current_user,
+            dataset=new_dataset,
+            classification=new_dataset.classification,
+            request=request,
+            details={
+                "filename": new_dataset.filename,
+                "size_bytes": new_dataset.size_bytes,
+                "mime_type": new_dataset.mime_type,
+            },
+        )
+
     return UploadResult(
         id=new_dataset.id,
         filename=new_dataset.filename,
@@ -642,15 +774,43 @@ async def list_datasets(
 @app.get("/datasets/{dataset_id}/download")
 async def download_dataset(
     dataset_id: int,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("dataset:download")),
 ):
     """Download dataset file bytes after enforcing RBAC permission and classification clearance."""
     dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
     if not dataset:
+        record_audit_event(
+            db,
+            event_type="ACCESS_DENIED",
+            severity="WARNING",
+            user=current_user,
+            dataset_id=dataset_id,
+            request=request,
+            details={"error": "Dataset not found", "requested_id": dataset_id},
+        )
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     if not can_user_access_classification(current_user, dataset.classification):
+        # Clearance security breach: mark CRITICAL for RESTRICTED or CONFIDENTIAL data
+        cls_level = (dataset.classification or "INTERNAL").upper()
+        severity = "CRITICAL" if cls_level in ["CONFIDENTIAL", "RESTRICTED"] else "WARNING"
+        
+        record_audit_event(
+            db,
+            event_type="ACCESS_DENIED",
+            severity=severity,
+            user=current_user,
+            dataset=dataset,
+            classification=dataset.classification,
+            request=request,
+            details={
+                "reason": "Clearance level insufficient",
+                "user_role": current_user.role.name if current_user.role else "GUEST",
+                "required_classification": dataset.classification,
+            },
+        )
         raise HTTPException(
             status_code=403,
             detail=f"Access denied: clearance level insufficient for {dataset.classification} data",
@@ -672,6 +832,22 @@ async def download_dataset(
     # Increment download counter
     dataset.download_count += 1
     db.commit()
+
+    # Log successful download in audit ledger
+    record_audit_event(
+        db,
+        event_type="DATASET_DOWNLOAD",
+        severity="INFO",
+        user=current_user,
+        dataset=dataset,
+        classification=dataset.classification,
+        request=request,
+        details={
+            "filename": dataset.filename,
+            "size_bytes": dataset.size_bytes,
+            "total_downloads": dataset.download_count,
+        },
+    )
 
     file_path = storage.get_file_path(dataset.storage_path)
     return FileResponse(
@@ -714,11 +890,12 @@ async def get_lsh_statistics(
 
 @app.post("/lsh/backfill")
 async def backfill_lsh_buckets(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("dataset:upload")),
 ):
     """
-    Backfills LSH bucket index entries for all datasets currently stored in PostgreSQL.
+    Backfills LSH bucket entries for all existing datasets that do not have them indexed.
     """
     all_datasets = db.query(Dataset).all()
     storage = get_storage()
@@ -752,8 +929,123 @@ async def backfill_lsh_buckets(
         )
         backfilled_count += 1
 
+    record_audit_event(
+        db,
+        event_type="LSH_BACKFILL",
+        severity="INFO",
+        user=current_user,
+        request=request,
+        details={"total_datasets_backfilled": backfilled_count},
+    )
+
     return {
+        "status": "success",
         "message": f"Successfully indexed LSH buckets for {backfilled_count} datasets",
-        "indexed_datasets": backfilled_count,
-        "status": "complete",
+        "datasets_indexed": backfilled_count,
     }
+
+
+# =========================================================================
+# STAGE 10: AUDIT LOGGING & COMPLIANCE LEDGER ENDPOINTS
+# =========================================================================
+
+@app.get("/admin/audit-logs", response_model=AuditLogsResponse)
+async def list_audit_logs(
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    username: Optional[str] = None,
+    dataset_id: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:view")),
+):
+    """
+    Returns security audit log ledger records with multi-dimensional filtering.
+    """
+    query = db.query(AuditLog)
+
+    if event_type:
+        query = query.filter(AuditLog.event_type == event_type.upper())
+    if severity:
+        query = query.filter(AuditLog.severity == severity.upper())
+    if username:
+        query = query.filter(AuditLog.username.ilike(f"%{username}%"))
+    if dataset_id is not None:
+        query = query.filter(AuditLog.dataset_id == dataset_id)
+
+    total = query.count()
+    items = query.order_by(desc(AuditLog.timestamp)).offset(offset).limit(limit).all()
+
+    logs_out = [
+        AuditLogOut(
+            id=item.id,
+            timestamp=item.timestamp,
+            user_id=item.user_id,
+            username=item.username,
+            event_type=item.event_type,
+            severity=item.severity,
+            dataset_id=item.dataset_id,
+            dataset_filename=item.dataset_filename,
+            classification=item.classification,
+            ip_address=item.ip_address,
+            user_agent=item.user_agent,
+            action_details=item.action_details,
+        )
+        for item in items
+    ]
+
+    return AuditLogsResponse(
+        total=total,
+        count=len(logs_out),
+        logs=logs_out,
+    )
+
+
+@app.get("/admin/audit-logs/stats", response_model=AuditStatsResponse)
+async def get_audit_log_statistics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:view")),
+):
+    """
+    Returns high-level security statistics and telemetry from the audit ledger.
+    """
+    total = db.query(AuditLog).count()
+
+    # Severity counts
+    info_count = db.query(AuditLog).filter(AuditLog.severity == "INFO").count()
+    warning_count = db.query(AuditLog).filter(AuditLog.severity == "WARNING").count()
+    critical_count = db.query(AuditLog).filter(AuditLog.severity == "CRITICAL").count()
+
+    # Event type breakdown
+    all_logs = db.query(AuditLog.event_type).all()
+    event_counts: dict[str, int] = {}
+    for (etype,) in all_logs:
+        event_counts[etype] = event_counts.get(etype, 0) + 1
+
+    # Top access denied attempts
+    denied_logs = (
+        db.query(AuditLog.username, AuditLog.classification)
+        .filter(AuditLog.event_type == "ACCESS_DENIED")
+        .all()
+    )
+    user_denial_counts: dict[str, int] = {}
+    for uname, _ in denied_logs:
+        key = uname or "Unknown"
+        user_denial_counts[key] = user_denial_counts.get(key, 0) + 1
+
+    top_denied = [
+        {"username": uname, "violations_count": count}
+        for uname, count in sorted(user_denial_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    ]
+
+    return AuditStatsResponse(
+        total_events=total,
+        severity_breakdown={
+            "INFO": info_count,
+            "WARNING": warning_count,
+            "CRITICAL": critical_count,
+        },
+        event_type_breakdown=event_counts,
+        top_denied_users=top_denied,
+    )

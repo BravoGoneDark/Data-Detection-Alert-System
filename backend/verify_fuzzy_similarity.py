@@ -73,23 +73,45 @@ def run_fuzzy_tests():
     print(f"[OK] Created user {username} with token")
 
     topic_seeds = [
-        ("Astrophysics Magnetar", "Magnetospheric Alfvén wave resonance in relativistic neutron stars", "spectrophotometers", "spectrophotometrs"),
-        ("Marine Deep Trench", "Extremophile bacterial colonies inhabiting volcanic hydrothermal vent plumes", "chemosynthetic", "chemosynthetc"),
-        ("Cryogenics Josephson", "Superconducting quantum interference devices in sub-Kelvin dilution refrigerators", "oscillations", "oscillatons"),
-        ("Genomics CRISPR", "Targeted endonuclease cleavage kinetics in synthetic eukaryotic chromosome vectors", "phosphorylation", "phoshorylation"),
+        (
+            "Astrophysics Magnetar",
+            "Magnetospheric Alfvén wave resonance in relativistic neutron stars produces extreme gamma-ray bursts.",
+            "Submillimeter cryogenic radio telescopes track high-energy flare polarization and metric tensor strain.",
+            "spectrophotometers",
+            "spectrophotometrs",
+        ),
+        (
+            "Volcanology Basaltic",
+            "Magmatic chamber conduit dynamics in shield volcanoes control subterranean seismic tremor frequency.",
+            "Infrared thermal imaging radiometers quantify degassing effusion rates along calderas.",
+            "pyroclastic",
+            "pyroclastc",
+        ),
+        (
+            "Cryogenics Josephson",
+            "Superconducting quantum interference devices in sub-Kelvin dilution refrigerators detect magnetic flux quanta.",
+            "Microwave reflectometry probes quantify phase coherence and Cooper pair tunneling impedance.",
+            "oscillations",
+            "oscillatons",
+        ),
+        (
+            "Aerodynamics Hypersonic",
+            "Boundary layer laminar-to-turbulent transition along slender carbon-composite re-entry scramjet waveriders.",
+            "Schlieren optical interferometry maps shockwave boundary layer interactions in hypersonic wind tunnels.",
+            "calibrations",
+            "calibratons",
+        ),
     ]
-    seed_idx = (int(time.time()) + int(uuid.uuid4().hex[:4], 16)) % len(topic_seeds)
-    domain_name, domain_phrase, word_orig, word_typo = topic_seeds[seed_idx]
-    unique_tag = uuid.uuid4().hex[:6]
+    unique_tag = uuid.uuid4().hex[:8]
+    run_tag = uuid.uuid4().hex[:8]
+    base_tokens = [f"signal_{uuid.uuid4().hex[:6]}" for _ in range(25)]
+    word_orig = f"marker_{uuid.uuid4().hex[:6]}"
+    word_typo = word_orig[:-1] + "x"
+    domain_name = f"FuzzyStudy_{uuid.uuid4().hex[:6]}"
 
     print("\n=== 2. Testing Unique Upload & 64-bit SimHash Fingerprinting ===")
-    fname_v1 = f"{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_alpha.txt"
-    text_v1 = f"""
-    Title: {domain_name} Investigation Sector_{unique_tag}
-    Abstract: We investigate {domain_phrase} for experimental trial {unique_tag}.
-    Precision laboratory sensors measure {word_orig} across thermal and pressure gradients.
-    Our predictive mathematical model demonstrates high binding affinity at the primary catalytic pocket for variant {unique_tag}.
-    """
+    fname_v1 = f"{uuid.uuid4().hex}.txt"
+    text_v1 = f"Investigation Sector_{unique_tag} {word_orig} " + " ".join(base_tokens)
     content_v1 = text_v1.encode("utf-8")
 
     body, ct = encode_multipart_formdata(
@@ -112,13 +134,8 @@ def run_fuzzy_tests():
 
     print("\n=== 3. Testing Fuzzy SimHash Mutation Matching (Hamming Distance <= 4 Bits) ===")
     # Version 2 has a single character typo (word_typo instead of word_orig) and different filename
-    fname_v2 = f"mutated_{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_beta.txt"
-    text_v2 = f"""
-    Title: {domain_name} Investigation Sector_{unique_tag}
-    Abstract: We investigate {domain_phrase} for experimental trial {unique_tag}.
-    Precision laboratory sensors measure {word_typo} across thermal and pressure gradients.
-    Our predictive mathematical model demonstrates high binding affinity at the primary catalytic pocket for variant {unique_tag}.
-    """
+    fname_v2 = f"{uuid.uuid4().hex}.txt"
+    text_v2 = f"Investigation Sector_{unique_tag} {word_typo} " + " ".join(base_tokens)
     content_v2 = text_v2.encode("utf-8")
 
     body_v2, ct_v2 = encode_multipart_formdata(

@@ -830,10 +830,116 @@ Verified via automated test suite `verify_lsh_indexing.py`:
 
 ### 15.6 Not Yet Done / Deferred
 
-- Stage 10: Security Audit Logging & Compliance Ledger.
+- Stage 10: Security Audit Logging & Compliance Ledger — completed in Stage 10.
 - Stage 11: Statistical & Behavioral Anomaly Detection (Z-Score, Burst Detection).
 - Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
 - Stage 13: Distributed Redis Caching & Async Background Queue.
 - Stage 14: Comprehensive Frontend Modularization & Cyber-Ops Dashboard.
 - Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+
+---
+
+## 16. Stage 10 — Security Audit Logging & Compliance Ledger — Complete
+
+### 16.1 Project Structure Change
+
+```
+backend/
+├── app/
+│   ├── audit_logger.py        ← Stage 10 (new): Immutable security audit logging utility, IP/User-Agent extraction, record_audit_event()
+│   ├── lsh_engine.py          ← Stage 9: SimHash 4-band partitioning, MinHash 16-band hashing, inverted indexing
+│   ├── fuzzy_engine.py        ← Stage 8: 64-bit SimHash, MinHash, Hamming distance
+│   ├── tfidf_engine.py        ← Stage 7: TF-IDF vectorization, Cosine similarity, salient keywords
+│   ├── metadata_extractor.py  ← Stage 6: Schema and row extraction
+│   ├── similarity.py          ← Stage 6: Metadata multi-attribute similarity
+│   ├── main.py                ← Stage 10: Integrated audit events across all upload/download/RBAC paths, GET /admin/audit-logs, GET /admin/audit-logs/stats
+│   ├── models.py              ← Stage 10: Added AuditLog model with timestamp, user_id, event_type, severity, IP, classification, and JSON action_details
+│   ├── storage.py             ← Content-Addressable Storage (CAS)
+│   ├── authorization.py       ← RBAC & Classification clearances
+│   ├── database.py            ← SQLAlchemy database session
+│   ├── auth.py                ← Stage 10: Audit logging on USER_SIGNUP, LOGIN_SUCCESS, and LOGIN_FAILED
+│   └── security.py            ← Password hashing and JWT helpers
+├── native/
+│   └── simhash_core.cpp       ← Stage 8: High-performance C++ SIMD bitwise popcount kernel
+├── alembic/
+│   └── versions/
+│       ├── d09dfe2e0805_add_audit_logs_table.py                         ← Stage 10 migration
+│       ├── f18a4c87b921_add_lsh_buckets_table.py                         ← Stage 9 migration
+│       ├── d475e505391a_add_fuzzy_simhash_and_minhash_columns_to_datasets.py ← Stage 8 migration
+│       ├── 1648add5d368_add_tfidf_content_columns_to_datasets.py             ← Stage 7 migration
+│       └── e799d8505dcd_add_metadata_columns_to_datasets.py                 ← Stage 6 migration
+├── verify_cas_and_rbac.py     ← Stage 5 verification test suite
+├── verify_metadata_similarity.py ← Stage 6 verification test suite
+├── verify_tfidf_content_similarity.py ← Stage 7 verification test suite
+├── verify_fuzzy_similarity.py ← Stage 8 verification test suite
+├── verify_lsh_indexing.py     ← Stage 9 verification test suite
+└── verify_audit_logging.py    ← Stage 10 (new): Comprehensive audit logging, 403 interception & compliance ledger test suite
+frontend/
+└── src/
+    └── App.jsx                ← Stage 10: Added Security Audit Ledger & Compliance Telemetry Modal with multi-dimensional filtering
+```
+
+### 16.2 Concept: Security Audit Logging & Compliance Ledger
+
+In enterprise data management and intelligence environments, maintaining an **immutable audit trail** is essential for forensic attribution, zero-trust data governance, and regulatory compliance:
+
+1. **Forensic Attribution:**
+   - Every security-sensitive transaction (authentication, authorization denial, upload collision, force override, file download) captures client context: User ID, Username, Timestamp (UTC), IP Address (handling proxy headers `X-Forwarded-For` and `X-Real-IP`), and client `User-Agent`.
+2. **Multi-Tier Severity Classification:**
+   - **INFO:** Standard legitimate operations (`USER_SIGNUP`, `LOGIN_SUCCESS`, `DATASET_UPLOAD`, `DATASET_DOWNLOAD`, `LSH_BACKFILL`).
+   - **WARNING:** Suspicious events and policy warnings (`LOGIN_FAILED`, `DUPLICATE_DETECTED`, `DUPLICATE_OVERRIDE`).
+   - **CRITICAL:** High-risk clearance breaches and unauthorized access attempts (`ACCESS_DENIED` 403 violations).
+3. **Multi-Dimensional Query & Telemetry API:**
+   - Administrators can filter logs by severity, event type, username, or dataset ID with pagination.
+   - Aggregate statistics endpoint provides real-time security posture telemetry, severity breakdowns, and a top access violators leaderboard.
+
+### 16.3 Database Design & Migration (`d09dfe2e0805`)
+
+Created table `audit_logs`:
+- `id` (`Integer`, primary key, index)
+- `timestamp` (`DateTime(timezone=True)`, server default `now()`, index, non-nullable)
+- `user_id` (`Integer`, ForeignKey `users.id` on delete `SET NULL`, index, nullable)
+- `username` (`String`, index, nullable)
+- `event_type` (`String(32)`, index, non-nullable)
+- `severity` (`String(10)`, index, non-nullable): `'INFO'`, `'WARNING'`, `'CRITICAL'`
+- `dataset_id` (`Integer`, ForeignKey `datasets.id` on delete `SET NULL`, index, nullable)
+- `dataset_filename` (`String`, nullable)
+- `classification` (`String`, nullable)
+- `ip_address` (`String`, nullable)
+- `user_agent` (`String`, nullable)
+- `action_details` (`String`, nullable): JSON-encoded metadata payload
+
+### 16.4 Telemetry & Administration Endpoints
+
+- `GET /admin/audit-logs`: Returns paginated audit ledger records with query parameters `event_type`, `severity`, `username`, `dataset_id`, `limit`, and `offset`.
+- `GET /admin/audit-logs/stats`: Returns high-level security analytics including `total_events`, `severity_breakdown`, `event_type_breakdown`, and `top_denied_users`.
+
+### 16.5 Verified Working (End-to-End)
+
+Verified via automated test suite `verify_audit_logging.py`:
+1. **Authentication Audit Logging:** `USER_SIGNUP` (INFO), `LOGIN_SUCCESS` (INFO), and `LOGIN_FAILED` (WARNING) logged with IP and User-Agent details.
+2. **Unique Dataset Upload Audit Logging:** Registered `DATASET_UPLOAD` (INFO) with classification and dataset attributes.
+3. **Duplicate Warning Audit Logging:** Upload collision logged `DUPLICATE_DETECTED` (WARNING) with matching canonical dataset reference.
+4. **Force Override Audit Logging:** Forced duplicate registration logged `DUPLICATE_OVERRIDE` (WARNING).
+5. **Authorized Download Audit Logging:** File retrieval logged `DATASET_DOWNLOAD` (INFO) with download counter tracking.
+6. **Security Clearance Breach Interception:** Unauthorized student download of RESTRICTED resource correctly intercepted with HTTP 403 Forbidden and recorded as `ACCESS_DENIED` with **CRITICAL** severity.
+7. **Security Telemetry & Analytics:** `GET /admin/audit-logs/stats` verified with severity breakdown and top violator rankings.
+8. **Full 6-Stage Regression Suite:** All 6 test suites (`verify_cas_and_rbac.py`, `verify_metadata_similarity.py`, `verify_tfidf_content_similarity.py`, `verify_fuzzy_similarity.py`, `verify_lsh_indexing.py`, `verify_audit_logging.py`) pass 100% cleanly.
+
+### 16.6 Frontend Integration
+
+Added interactive **Security Audit Ledger & Compliance Telemetry Modal** in `App.jsx`:
+- Live Telemetry metrics bar (Total events, Critical breaches, Warnings, Legitimate operations).
+- Top clearance violators alert banner.
+- Multi-dimensional filter dropdowns (Severity, Event Type, Username search).
+- Real-time audit log stream table with high-contrast severity tags and JSON action inspector.
+
+### 16.7 Not Yet Done / Deferred
+
+- Stage 11: Statistical & Behavioral Anomaly Detection (Z-Score, Burst Detection, Entropy Drift).
+- Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
+- Stage 13: Distributed Redis Caching & Async Background Queue.
+- Stage 14: Comprehensive Frontend Modularization & Cyber-Ops Dashboard.
+- Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+
 

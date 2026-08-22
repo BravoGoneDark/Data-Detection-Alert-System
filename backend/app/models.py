@@ -78,3 +78,24 @@ class Role(Base):
     description = Column(String, nullable=True)
 
     permissions = relationship("Permission", secondary=role_permissions, backref="roles")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    username = Column(String, nullable=True, index=True)
+    event_type = Column(String(32), nullable=False, index=True)  # LOGIN_SUCCESS, LOGIN_FAILED, USER_SIGNUP, DATASET_UPLOAD, DUPLICATE_DETECTED, DUPLICATE_OVERRIDE, DATASET_DOWNLOAD, ACCESS_DENIED, LSH_BACKFILL
+    severity = Column(String(10), nullable=False, index=True)    # INFO, WARNING, CRITICAL
+    dataset_id = Column(Integer, ForeignKey("datasets.id", ondelete="SET NULL"), nullable=True, index=True)
+    dataset_filename = Column(String, nullable=True)
+    classification = Column(String, nullable=True)
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    action_details = Column(String, nullable=True)  # JSON-encoded event details
+
+    user = relationship("User")
+    dataset = relationship("Dataset")
+

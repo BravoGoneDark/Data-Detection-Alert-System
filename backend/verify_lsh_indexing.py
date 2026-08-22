@@ -14,6 +14,7 @@ Tests:
 import urllib.request
 import urllib.error
 import json
+import random
 import time
 import uuid
 
@@ -206,19 +207,16 @@ def test_api_and_database_lsh():
             "scatterng",
         ),
     ]
-    domain_idx = (int(time.time()) + int(uuid.uuid4().hex[:4], 16)) % len(domain_templates)
-    domain_name, s1, s2, s3, word_orig, word_typo = domain_templates[domain_idx]
-    unique_tag = uuid.uuid4().hex[:6]
+    unique_tag = uuid.uuid4().hex[:8]
     run_tag = uuid.uuid4().hex[:8]
+    base_tokens = [f"lexicon_{uuid.uuid4().hex[:6]}" for _ in range(20)]
+    word_orig = f"specimen_{uuid.uuid4().hex[:6]}"
+    word_typo = word_orig[:-1] + "x"
+    domain_name = f"ObservationMatrix_{uuid.uuid4().hex[:6]}"
 
     print("\n=== Test 4: Uploading Dataset D1 & Verifying Automatic Bucket Indexing ===")
-    fname_d1 = f"{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_v1.txt"
-    text_d1 = f"""
-    CLASSIFIED: {domain_name} Research Investigation Sector_{unique_tag}
-    {s1}
-    {s2}
-    {s3}
-    """
+    fname_d1 = f"lsh_obs_{uuid.uuid4().hex[:12]}.txt"
+    text_d1 = f"CLASSIFIED: {domain_name} Investigation {run_tag} {word_orig} " + " ".join(base_tokens)
     content_d1 = text_d1.encode("utf-8")
 
     body_d1, ct_d1 = encode_multipart_formdata(
@@ -245,13 +243,8 @@ def test_api_and_database_lsh():
 
     # 5. Upload Near-Duplicate D2 (Single Word Mutation / Typo)
     print("\n=== Test 5: Near-Duplicate Upload Caught via LSH Candidate Lookup ===")
-    fname_d2 = f"mutated_{domain_name.lower().replace(' ', '_')}_{timestamp}_{unique_tag}_v2.txt"
-    text_d2 = f"""
-    CLASSIFIED: {domain_name} Research Investigation Sector_{unique_tag}
-    {s1}
-    {s2.replace(word_orig, word_typo)}
-    {s3}
-    """
+    fname_d2 = f"mutated_obs_{uuid.uuid4().hex[:12]}.txt"
+    text_d2 = f"CLASSIFIED: {domain_name} Investigation {run_tag} {word_typo} " + " ".join(base_tokens)
     content_d2 = text_d2.encode("utf-8")
 
     body_d2, ct_d2 = encode_multipart_formdata(
