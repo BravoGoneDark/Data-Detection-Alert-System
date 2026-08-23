@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Float, ForeignKey, Table
+from sqlalchemy import Column, Integer, String, DateTime, BigInteger, Float, ForeignKey, Table, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -118,5 +118,40 @@ class AnomalyEvent(Base):
 
     user = relationship("User")
     dataset = relationship("Dataset")
+
+
+class QuarantineRecord(Base):
+    __tablename__ = "quarantine_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
+    username = Column(String, nullable=False, index=True)
+    ip_address = Column(String, nullable=True)
+    reason = Column(String, nullable=False)
+    trigger_anomaly_id = Column(Integer, ForeignKey("anomaly_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    risk_score = Column(Float, nullable=False, default=0.0)
+    status = Column(String(16), nullable=False, default="ACTIVE", index=True)  # ACTIVE, RELEASED
+    quarantined_at = Column(DateTime(timezone=True), server_default=func.now(), index=True, nullable=False)
+    released_at = Column(DateTime(timezone=True), nullable=True)
+    released_by = Column(String, nullable=True)
+    release_notes = Column(String, nullable=True)
+
+    user = relationship("User")
+    trigger_anomaly = relationship("AnomalyEvent")
+
+
+class WebhookConfig(Base):
+    __tablename__ = "webhook_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    url = Column(String, nullable=False)
+    secret_token = Column(String, nullable=True)
+    event_types_json = Column(String, nullable=False, default='["ALL"]')  # JSON-encoded array e.g. ["QUARANTINE_TRIGGERED", "CRITICAL_ANOMALY"]
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_triggered_at = Column(DateTime(timezone=True), nullable=True)
+    failure_count = Column(Integer, default=0, nullable=False)
+
 
 

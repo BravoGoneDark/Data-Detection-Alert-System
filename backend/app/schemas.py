@@ -145,3 +145,82 @@ class AnomalyResolveRequest(BaseModel):
     status: str  # "INVESTIGATING", "RESOLVED", "FALSE_POSITIVE"
     notes: Optional[str] = None
 
+
+class QuarantineRecordOut(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    username: str
+    ip_address: Optional[str] = None
+    reason: str
+    trigger_anomaly_id: Optional[int] = None
+    risk_score: float
+    status: str
+    quarantined_at: datetime
+    released_at: Optional[datetime] = None
+    released_by: Optional[str] = None
+    release_notes: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class QuarantineListResponse(BaseModel):
+    total: int
+    count: int
+    records: list[QuarantineRecordOut]
+
+
+class QuarantineStatsResponse(BaseModel):
+    active_quarantines: int
+    total_quarantined_all_time: int
+    status_breakdown: dict[str, int]
+
+
+class ManualQuarantineRequest(BaseModel):
+    username: str
+    reason: str
+    risk_score: Optional[float] = 85.0
+
+
+class QuarantineReleaseRequest(BaseModel):
+    release_notes: str
+
+
+class QuarantineStatusResponse(BaseModel):
+    is_quarantined: bool
+    record: Optional[QuarantineRecordOut] = None
+
+
+class WebhookConfigCreate(BaseModel):
+    name: str
+    url: str
+    secret_token: Optional[str] = None
+    event_types: list[str] = ["ALL"]
+
+
+class WebhookConfigOut(BaseModel):
+    id: int
+    name: str
+    url: str
+    event_types: list[str] = []
+    is_active: bool
+    created_at: datetime
+    last_triggered_at: Optional[datetime] = None
+    failure_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
+class WebhookTestRequest(BaseModel):
+    url: str
+    secret_token: Optional[str] = None
+
+
+class WebhookTestResponse(BaseModel):
+    success: bool
+    status_code: int
+    latency_ms: float
+    error: Optional[str] = None
+
+

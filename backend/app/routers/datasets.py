@@ -25,6 +25,7 @@ from app.fuzzy_engine import (
 from app.routers.lsh import index_dataset_lsh_buckets, parse_keywords_json
 from app.duplicate_evaluator import evaluate_duplicate_candidates
 from app.anomaly_detector import evaluate_download_anomaly
+from app.quarantine import is_user_quarantined, evaluate_auto_quarantine
 from app.schemas import (
     UploadResult,
     ExistingDataset,
@@ -308,6 +309,29 @@ async def download_dataset(
             detail=f"Access denied: clearance level insufficient for {dataset.classification} data",
         )
 
+    # Check Active Policy Quarantine Containment
+    is_quarantined, q_record = is_user_quarantined(db, user_id=current_user.id, username=current_user.username)
+    if is_quarantined and q_record:
+        record_audit_event(
+            db,
+            event_type="ACCESS_DENIED",
+            severity="CRITICAL",
+            user=current_user,
+            dataset=dataset,
+            classification=dataset.classification,
+            request=request,
+            details={
+                "reason": "Account is quarantined under active security containment policy",
+                "quarantine_id": q_record.id,
+                "quarantine_reason": q_record.reason,
+                "risk_score": q_record.risk_score,
+            },
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Account is quarantined under active security containment policy: {q_record.reason}. Contact Security Operations.",
+        )
+
     if not dataset.storage_path:
         raise HTTPException(
             status_code=404,
@@ -342,7 +366,14 @@ async def download_dataset(
     )
 
     # Evaluate Statistical & Behavioral Download Anomalies (Z-Score, Burst, Off-Hours, Drift)
-    evaluate_download_anomaly(db=db, user=current_user, dataset=dataset, request=request)
+    triggered_anomalies = evaluate_download_anomaly(db=db, user=current_user, dataset=dataset, request=request)
+    if triggered_anomalies:
+        quarantine_rec = evaluate_auto_quarantine(db=db, user=current_user, triggered_anomalies=triggered_anomalies, request=request)
+        if quarantine_rec:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Account is quarantined under active security containment policy: {quarantine_rec.reason}. Contact Security Operations.",
+            )
 
     file_path = storage.get_file_path(dataset.storage_path)
     return FileResponse(
@@ -350,3 +381,5 @@ async def download_dataset(
         filename=dataset.filename,
         media_type="application/octet-stream",
     )
+
+

@@ -80,20 +80,21 @@ def calculate_z_score(current_count: int, mu: float, sigma: float) -> float:
 def detect_download_burst(db: Session, user_id: int) -> tuple[bool, int, str]:
     """
     Checks for high-velocity burst activity:
-    - 30-second window: >= 4 downloads (velocity spike)
-    - 5-minute window: >= 12 downloads (bulk exfiltration)
+    - 30-second window: >= 6 downloads (velocity spike)
+    - 5-minute window: >= 16 downloads (bulk exfiltration)
     """
-    # 30-second window
+    # 30-second window (threshold 6 rapid downloads)
     count_30s = get_user_recent_download_count(db, user_id, window_seconds=30)
-    if count_30s >= 4:
+    if count_30s >= 6:
         return True, count_30s, "HIGH_VELOCITY_BURST_30S"
 
-    # 5-minute window
+    # 5-minute window (threshold 16 downloads)
     count_300s = get_user_recent_download_count(db, user_id, window_seconds=300)
-    if count_300s >= 12:
+    if count_300s >= 16:
         return True, count_300s, "BULK_EXFILTRATION_5M"
 
     return False, count_30s, "NORMAL"
+
 
 
 def detect_off_hours_access(dt: datetime | None = None) -> tuple[bool, int]:
@@ -184,7 +185,7 @@ def evaluate_download_anomaly(
     mu, sigma = compute_user_baseline_stats(db, user.id)
     z_val = calculate_z_score(current_hourly_downloads, mu, sigma)
 
-    if z_val >= 3.0:
+    if current_hourly_downloads >= 6 and z_val >= 3.5:
         severity = "CRITICAL" if z_val >= 5.0 else "HIGH"
         risk_score = min(100.0, 50.0 + (z_val * 10.0))
         details = {
@@ -192,9 +193,10 @@ def evaluate_download_anomaly(
             "current_hourly_downloads": current_hourly_downloads,
             "baseline_mean_mu": mu,
             "baseline_sigma": sigma,
-            "threshold": 3.0,
-            "message": f"User download rate ({current_hourly_downloads}/hr) exceeded statistical threshold (Z={z_val:.1f} >= 3.0)",
+            "threshold": 3.5,
+            "message": f"User download rate ({current_hourly_downloads}/hr) exceeded statistical threshold (Z={z_val:.1f} >= 3.5)",
         }
+
         event = record_anomaly_event(
             db=db,
             user=user,

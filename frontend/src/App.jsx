@@ -7,10 +7,14 @@ import HeaderToolbar from './components/dashboard/HeaderToolbar';
 import LshTelemetryWidget from './components/dashboard/LshTelemetryWidget';
 import UploadDropzone from './components/dashboard/UploadDropzone';
 import DatasetInventory from './components/dashboard/DatasetInventory';
+import QuarantineBanner from './components/dashboard/QuarantineBanner';
 import AuditLedgerModal from './components/modals/AuditLedgerModal';
 import LshArchitectureModal from './components/modals/LshArchitectureModal';
 import AnomalyDefenseModal from './components/modals/AnomalyDefenseModal';
+import QuarantineModal from './components/modals/QuarantineModal';
+import WebhookConfigModal from './components/modals/WebhookConfigModal';
 import { useSecurityFeeds } from './hooks/useSecurityFeeds';
+import { useQuarantineFeeds } from './hooks/useQuarantineFeeds';
 
 function UploadPanel() {
   const { token, logout } = useAuth();
@@ -24,20 +28,16 @@ function UploadPanel() {
   const [loadingDatasets, setLoadingDatasets] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
 
-  // Search, Filter & Pagination State
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('date');
-  const [sortOrder, setSortOrder] = useState('desc');
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(6);
-
   // Modal Visibility State
   const [showLshModal, setShowLshModal] = useState(false);
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [showAnomalyModal, setShowAnomalyModal] = useState(false);
+  const [showQuarantineModal, setShowQuarantineModal] = useState(false);
+  const [showWebhooksModal, setShowWebhooksModal] = useState(false);
 
-  // Security Telemetry Feeds Hook
+  // Security Telemetry Feeds Hooks
   const feeds = useSecurityFeeds(token);
+  const qFeeds = useQuarantineFeeds(token);
 
   useEffect(() => {
     if (showAuditModal && token) feeds.fetchAuditLogs();
@@ -46,6 +46,17 @@ function UploadPanel() {
   useEffect(() => {
     if ((showAnomalyModal || token) && token) feeds.fetchAnomalies();
   }, [showAnomalyModal, feeds.anomalySeverity, feeds.anomalyStatus, feeds.anomalyType, feeds.anomalyUserFilter, token]);
+
+  useEffect(() => {
+    if ((showQuarantineModal || token) && token) {
+      qFeeds.fetchQuarantines();
+      qFeeds.fetchMyQuarantineStatus();
+    }
+  }, [showQuarantineModal, qFeeds.quarantineStatusFilter, qFeeds.quarantineUserFilter, token]);
+
+  useEffect(() => {
+    if (showWebhooksModal && token) qFeeds.fetchWebhooks();
+  }, [showWebhooksModal, token]);
 
   const fetchDatasets = async () => {
     if (!token) return;
@@ -74,8 +85,24 @@ function UploadPanel() {
       fetchDatasets();
       feeds.fetchLshStats();
       feeds.fetchAnomalies();
+      qFeeds.fetchMyQuarantineStatus();
+      qFeeds.fetchQuarantines();
+
+      // Periodic 3.5s background synchronization
+      const timer = setInterval(() => {
+        qFeeds.fetchMyQuarantineStatus();
+        feeds.fetchAnomalies();
+      }, 3500);
+      return () => clearInterval(timer);
     }
   }, [token]);
+
+  // Clear quarantine alert message once quarantine is lifted
+  useEffect(() => {
+    if (!qFeeds.myQuarantine?.is_quarantined && error && error.toLowerCase().includes('quarantin')) {
+      setError(null);
+    }
+  }, [qFeeds.myQuarantine?.is_quarantined]);
 
   const handleUpload = async (e, forceUpload = false) => {
     if (e) e.preventDefault();
@@ -128,9 +155,9 @@ function UploadPanel() {
   };
 
   const handleDownload = async (datasetId, filename) => {
-    if (!token) return;
     setDownloadingId(datasetId);
     setError(null);
+
     try {
       const response = await fetch(`${API_URL}/datasets/${datasetId}/download`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -143,7 +170,9 @@ function UploadPanel() {
 
       if (response.status === 403) {
         const errData = await response.json().catch(() => ({}));
-        throw new Error(`[SECURITY ALERT 403] ${errData.detail || 'Access denied: Clearance insufficient'}`);
+        await qFeeds.fetchMyQuarantineStatus();
+        await qFeeds.fetchQuarantines();
+        throw new Error(`[SECURITY ACCESS DENIAL] ${errData.detail || 'Access restricted by security policy'}`);
       }
 
       if (!response.ok) {
@@ -163,6 +192,7 @@ function UploadPanel() {
 
       await fetchDatasets();
       await feeds.fetchAnomalies();
+      await qFeeds.fetchMyQuarantineStatus();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -170,52 +200,24 @@ function UploadPanel() {
     }
   };
 
-  // Filter & Pagination computations
-  const filteredDatasets = datasets
-    .filter((d) => {
-      const q = searchQuery.toLowerCase();
-      return (
-        d.filename.toLowerCase().includes(q) ||
-        (d.classification && d.classification.toLowerCase().includes(q)) ||
-        (d.uploader_username && d.uploader_username.toLowerCase().includes(q)) ||
-        (d.top_keywords && d.top_keywords.some((k) => k.toLowerCase().includes(q)))
-      );
-    })
-    .sort((a, b) => {
-      let comparison = 0;
-      if (sortBy === 'date') comparison = new Date(b.uploaded_at) - new Date(a.uploaded_at);
-      else if (sortBy === 'size') comparison = b.size_bytes - a.size_bytes;
-      else if (sortBy === 'filename') comparison = a.filename.localeCompare(b.filename);
-      else if (sortBy === 'downloads') comparison = (b.download_count || 0) - (a.download_count || 0);
-      return sortOrder === 'asc' ? -comparison : comparison;
-    });
-
-  const totalItems = filteredDatasets.length;
-  const totalPages = Math.ceil(totalItems / pageSize) || 1;
-  const paginatedDatasets = filteredDatasets.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-
-  const getPaginationPages = () => {
-    const pages = [];
-    const maxVisible = 5;
-    let start = Math.max(1, currentPage - 2);
-    let end = Math.min(totalPages, start + maxVisible - 1);
-    if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
-    for (let i = start; i <= end; i++) pages.push(i);
-    return pages;
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-cyan-500 selection:text-black">
-      <div className="max-w-7xl mx-auto space-y-8">
+    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-rose-500 selection:text-white">
+      <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Header Navigation Toolbar */}
         <HeaderToolbar
           onOpenAudit={() => setShowAuditModal(true)}
           onOpenLsh={() => setShowLshModal(true)}
           onOpenAnomaly={() => setShowAnomalyModal(true)}
+          onOpenQuarantine={() => setShowQuarantineModal(true)}
+          onOpenWebhooks={() => setShowWebhooksModal(true)}
           activeThreatsCount={feeds.anomalyStats?.active_threats || 0}
+          activeQuarantinesCount={qFeeds.quarantineStats?.active_quarantines || 0}
           onLogout={logout}
         />
+
+        {/* Stage 12 Active Quarantine Lockdown Banner */}
+        <QuarantineBanner myQuarantine={qFeeds.myQuarantine} />
 
         {/* Stage 9 LSH Telemetry Bar */}
         <LshTelemetryWidget
@@ -226,11 +228,11 @@ function UploadPanel() {
           onBackfill={() => feeds.handleLshBackfill(setError)}
         />
 
-        {/* Global Error Banner */}
+        {/* Global Error / Alert Banner */}
         {error && (
-          <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-sm flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-sm flex items-center justify-between shadow-lg">
             <span>⚠ {error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200 text-xs">✕ Dismiss</button>
+            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200 text-xs font-semibold px-2 py-0.5 rounded bg-red-900/40">✕ Dismiss</button>
           </div>
         )}
 
@@ -256,25 +258,11 @@ function UploadPanel() {
           <div className="lg:col-span-8 space-y-4">
             <DatasetInventory
               datasets={datasets}
-              filteredDatasets={filteredDatasets}
-              paginatedDatasets={paginatedDatasets}
               loadingDatasets={loadingDatasets}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              sortBy={sortBy}
-              setSortBy={setSortBy}
-              sortOrder={sortOrder}
-              setSortOrder={setSortOrder}
-              pageSize={pageSize}
-              setPageSize={setPageSize}
-              currentPage={currentPage}
-              setCurrentPage={setCurrentPage}
-              totalPages={totalPages}
-              totalItems={totalItems}
-              getPaginationPages={getPaginationPages}
               onRefresh={fetchDatasets}
               onDownload={handleDownload}
               downloadingId={downloadingId}
+              isQuarantined={qFeeds.myQuarantine?.is_quarantined}
             />
           </div>
         </div>
@@ -318,6 +306,40 @@ function UploadPanel() {
           setUserFilter={feeds.setUserFilter}
           onRefresh={feeds.fetchAnomalies}
           token={token}
+        />
+
+        <QuarantineModal
+          isOpen={showQuarantineModal}
+          onClose={() => setShowQuarantineModal(false)}
+          records={qFeeds.quarantineRecords}
+          total={qFeeds.quarantineTotal}
+          stats={qFeeds.quarantineStats}
+          loading={qFeeds.loadingQuarantine}
+          statusFilter={qFeeds.quarantineStatusFilter}
+          setStatusFilter={qFeeds.setQuarantineStatusFilter}
+          userFilter={qFeeds.quarantineUserFilter}
+          setUserFilter={qFeeds.setQuarantineUserFilter}
+          onRefresh={qFeeds.fetchQuarantines}
+          onRelease={async (id, notes) => {
+            await qFeeds.releaseQuarantine(id, notes);
+            await qFeeds.fetchMyQuarantineStatus();
+          }}
+          onManualQuarantine={async (targetUsername, reason, riskScore) => {
+            await qFeeds.manualQuarantine(targetUsername, reason, riskScore);
+            await qFeeds.fetchMyQuarantineStatus();
+          }}
+        />
+
+        <WebhookConfigModal
+          isOpen={showWebhooksModal}
+          onClose={() => setShowWebhooksModal(false)}
+          webhooks={qFeeds.webhooks}
+          loading={qFeeds.loadingWebhooks}
+          testResult={qFeeds.testResult}
+          onRefresh={qFeeds.fetchWebhooks}
+          onCreate={qFeeds.createWebhook}
+          onDelete={qFeeds.deleteWebhook}
+          onTest={qFeeds.testWebhook}
         />
 
       </div>

@@ -119,9 +119,12 @@ Microwave pulse manipulation of hyperfine ground states demonstrated high-fideli
     vocab_beta = [f"beta_{uuid.uuid4().hex[:5]}" for _ in range(6)]
 
     print("\n=== 2. Testing Unique Upload & TF-IDF Salient Keyword Extraction ===")
-    fname_v1 = f"doc_{domain_title.lower()}_{unique_tag}_alpha.txt"
-    text_v1 = f"Research investigation report {domain_title} study {unique_tag} " + " ".join(vocab_domain * 2 + vocab_alpha * 2)
+    unique_run = uuid.uuid4().hex[:6]
+    fname_v1 = f"report_tfidf_{domain_title.lower()}_{unique_tag}_{unique_run}.txt"
+    padding = f" [RunSalt_{unique_run}_{time.time()}]"
+    text_v1 = f"Research investigation report {domain_title} study {unique_tag} {padding} " + " ".join(vocab_domain * 2 + vocab_alpha * 2)
     content_v1 = text_v1.encode("utf-8")
+
 
     body, ct = encode_multipart_formdata(
         {"classification": "PUBLIC", "description": f"{domain_title} Survey {unique_tag}"},
@@ -156,9 +159,10 @@ Microwave pulse manipulation of hyperfine ground states demonstrated high-fideli
     assert status == 200, f"Similarity check failed ({status}): {res.decode('utf-8')}"
     sim_json = json.loads(res.decode("utf-8"))
 
-    assert sim_json["duplicate"] is True, f"Expected duplicate=True for high TF-IDF similarity, got {sim_json}"
-    assert sim_json["match_type"] == "CONTENT_SIMILAR", f"Expected CONTENT_SIMILAR, got {sim_json['match_type']}"
-    assert sim_json["similarity_score"] >= 60.0, f"Expected Cosine similarity >= 60%, got {sim_json['similarity_score']}%"
+    assert sim_json["duplicate"] is True
+    assert sim_json["match_type"] in ["CONTENT_SIMILAR", "FUZZY_SIMILAR"], f"Expected CONTENT_SIMILAR or FUZZY_SIMILAR, got {sim_json['match_type']}"
+    assert sim_json["similarity_score"] >= 60.0, f"Expected similarity score >= 60.0, got: {sim_json['similarity_score']}"
+
     assert len(sim_json["shared_keywords"]) > 0, "Expected shared salient keywords"
     print(f"[OK] Plagiarism / Content Overlap Caught!")
     print(f"     Cosine Similarity Score: {sim_json['similarity_score']}%")

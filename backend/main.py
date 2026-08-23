@@ -7,10 +7,12 @@ from app.routers.datasets import router as datasets_router
 from app.routers.lsh import router as lsh_router
 from app.routers.audit import router as audit_router
 from app.routers.anomalies import router as anomalies_router
+from app.routers.quarantine import router as quarantine_router
+from app.routers.webhooks import router as webhooks_router
 
 app = FastAPI(
     title="DDAS - Data Detection Alert System",
-    description="Secure Data Download Duplication, Forensic Audit Ledger & Anomaly Detection System",
+    description="Secure Data Download Duplication, Forensic Audit Ledger, Anomaly Detection & Policy Quarantine System",
     version="1.0.0",
 )
 
@@ -36,6 +38,9 @@ app.include_router(datasets_router)
 app.include_router(lsh_router)
 app.include_router(audit_router)
 app.include_router(anomalies_router)
+app.include_router(quarantine_router)
+app.include_router(webhooks_router)
+
 
 
 @app.get("/")

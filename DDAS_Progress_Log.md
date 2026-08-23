@@ -1055,10 +1055,145 @@ Verified via automated test suite `verify_anomaly_detection.py`:
 
 ### 17.6 Not Yet Done / Deferred
 
-- Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine.
+- Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine *(COMPLETED - See Section 18)*.
 - Stage 13: Distributed Redis Caching & Async Background Queue.
 - Stage 14: Comprehensive Cyber-Ops UI & Layout Stabilization.
 - Stage 15: Production Containerization (Docker Compose) & CI/CD Pipeline.
+- Stage 16: Final Security Hardening, Penetration Testing & Production Handover.
+
+---
+
+## 18. Stage 12: Automated Alerting, Webhooks & Policy Quarantine Engine
+
+### 18.1 Architectural Purpose & Motivation
+
+Detecting anomalous exfiltration patterns (Stage 11) is only half the battle. In modern SOC and incident response architectures, systems must provide **autonomous containment** and **real-time alerting** to prevent data breaches from expanding:
+1. **Autonomous Policy Quarantine:** When high-risk behavioral anomalies (exfiltration bursts $\ge 6$ downloads in 30s or critical risk scores $\ge 80.0$) occur, the engine immediately isolates the offending user account in real time, revoking file download privileges with HTTP 403 Forbidden.
+2. **Immediate Trigger Interception:** If a download causes an exfiltration surge, the server aborts the transmission before sending any file bytes, preventing zero-day theft.
+3. **Outbound SOC Webhook Subsystem:** Emits structured, HMAC SHA-256 cryptographically signed JSON payloads (`X-DDAS-Signature`) to external SIEM/SOC endpoints (Slack, Discord, Splunk, custom webhooks).
+4. **Administrative Clearance Release Protocol:** Administrators can inspect containment evidence, verify user identity via MFA/clearance, and lift quarantine with auditable release notes.
+
+```
+                          ┌─────────────────────────────────────────┐
+                          │   DOWNLOAD ATTEMPT OR HIGH-RISK EVENT   │
+                          └────────────────────┬────────────────────┘
+                                               │
+                                               ▼
+                         ┌───────────────────────────────────────────┐
+                         │      `is_user_quarantined()` Check        │
+                         └─────────────┬─────────────────────────────┘
+                                       │
+                      ┌────────────────┴────────────────┐
+                      ▼                                 ▼
+             [User is Quarantined]            [User NOT Quarantined]
+             • Abort with HTTP 403            • Stream requested dataset
+             • Log ACCESS_DENIED CRITICAL     • Evaluate behavioral anomaly
+                      │                                 │
+                      │                                 ▼
+                      │                      [Burst / Critical Risk?]
+                      │                                 │
+                      │             ┌───────────────────┴───────────────────┐
+                      │             ▼                                       ▼
+                      │        [No Anomaly]                          [Threat Detected]
+                      │        • Normal flow                         • `quarantine_user()`
+                      │                                              • Terminate stream (403)
+                      │                                              • Insert `QuarantineRecord`
+                      │                                              • Write `USER_QUARANTINED` log
+                      │                                                         │
+                      └────────────────────────┬────────────────────────────────┘
+                                               ▼
+                              ┌──────────────────────────────────┐
+                              │  OUTBOUND WEBHOOK DISPATCHER     │
+                              │  • ThreadPool worker executor    │
+                              │  • HMAC-SHA256 Header Signature  │
+                              │  • Event: QUARANTINE_TRIGGERED   │
+                              └────────────────┬─────────────────┘
+                                               ▼
+                              ┌──────────────────────────────────┐
+                              │     EXTERNAL SIEM / SOC APIS     │
+                              │   (Discord, Slack, Webhook.site) │
+                              └──────────────────────────────────┘
+```
+
+### 18.2 Technologies & Algorithms Used
+
+1. **HMAC-SHA256 Cryptographic Signature:**
+   $$\text{Signature} = \text{HMAC-SHA256}(\text{secret\_token}, \text{payload\_bytes})$$
+   Sent in `X-DDAS-Signature: sha256=<hash>` to guarantee payload integrity and authenticity for downstream SOC receivers.
+2. **Asynchronous Non-Blocking Dispatch & Loopback Fast-Path:**
+   - Background thread-pool (`ThreadPoolExecutor`) offloading to prevent HTTP I/O latency from delaying client requests.
+   - Loopback echo handling (`/admin/webhooks/echo`) to eliminate single-worker deadlocks during internal test pings.
+   - `asyncio.to_thread` wrapping for synchronous network calls in FastAPI endpoints.
+3. **Database Architecture & Alembic Migration (`7a1e4b9c1234`):**
+   - **`quarantine_records`:**
+     - `id` (`Integer`, PK, index)
+     - `user_id` (`Integer`, FK `users.id` on delete CASCADE, index, nullable)
+     - `username` (`String`, index, non-nullable)
+     - `ip_address` (`String`, nullable)
+     - `reason` (`String`, non-nullable)
+     - `trigger_anomaly_id` (`Integer`, FK `anomaly_events.id` on delete SET NULL, nullable)
+     - `risk_score` (`Float`, non-nullable, default 0.0)
+     - `status` (`String(16)`, index, non-nullable, default `'ACTIVE'`): `'ACTIVE'`, `'RELEASED'`
+     - `quarantined_at` (`DateTime(timezone=True)`, server default `now()`)
+     - `released_at` (`DateTime(timezone=True)`, nullable)
+     - `released_by` (`String`, nullable)
+     - `release_notes` (`String`, nullable)
+   - **`webhook_configs`:**
+     - `id` (`Integer`, PK, index)
+     - `name` (`String`, non-nullable)
+     - `url` (`String`, non-nullable)
+     - `secret_token` (`String`, nullable)
+     - `event_types_json` (`String`, default `'["ALL"]'`)
+     - `is_active` (`Boolean`, default True, index)
+     - `created_at` (`DateTime(timezone=True)`, server default `now()`)
+     - `last_triggered_at` (`DateTime(timezone=True)`, nullable)
+     - `failure_count` (`Integer`, default 0)
+
+### 18.3 API Endpoints & Routers
+
+- **Quarantine Endpoints (`/admin/quarantine`, `/quarantine`):**
+  - `GET /quarantine/status`: Returns current user containment status (`is_quarantined: bool`, `record: QuarantineRecordOut`).
+  - `GET /admin/quarantine`: Lists containment records with filters (`status`, `username`, `limit`, `offset`).
+  - `GET /admin/quarantine/stats`: Returns telemetry (`total_quarantined`, `active_quarantines`, `released_quarantines`, `reason_breakdown`).
+  - `POST /admin/quarantine`: Manual administrative isolation of target username.
+  - `POST /admin/quarantine/{id}/release`: Administrative clearance release with required audit justification notes.
+- **Outbound Webhook Endpoints (`/admin/webhooks`):**
+  - `GET /admin/webhooks`: Lists all configured destination webhooks.
+  - `POST /admin/webhooks`: Registers a new webhook destination.
+  - `DELETE /admin/webhooks/{id}`: Deletes a webhook configuration.
+  - `POST /admin/webhooks/{id}/test`: Immediate test ping execution with latency reporting.
+  - `POST /admin/webhooks/test-connection`: Pre-registration connectivity testing.
+  - `POST /admin/webhooks/echo`: Built-in local loopback receiver for offline testing.
+
+### 18.4 Frontend Cyber-Ops Interface
+
+- **`QuarantineBanner.jsx`:** Glowing red/amber animated lockdown banner showing containment reason and escalation instructions for quarantined accounts.
+- **`QuarantineModal.jsx`:** Security Incident Containment Center with telemetry counters, manual quarantine tools, and administrative release protocol.
+- **`WebhookConfigModal.jsx`:** Outbound SOC Webhook management modal with test ping latency verification and event subscription filters.
+- **`DatasetInventory.jsx`:** Dynamically updates download buttons to `🔒 Restricted` in red disabled state when account is contained.
+- **Auto-Sync & Auto-Dismissal:** 3.5s background polling automatically dismisses lockdown banners and unlocks download buttons as soon as admin release is approved.
+
+### 18.5 Verification & Regression Matrix (8 of 8 Suites Passing at 100%)
+
+- `verify_cas_and_rbac.py` -> 100% PASS
+- `verify_metadata_similarity.py` -> 100% PASS
+- `verify_tfidf_content_similarity.py` -> 100% PASS
+- `verify_fuzzy_similarity.py` -> 100% PASS
+- `verify_lsh_indexing.py` -> 100% PASS
+- `verify_audit_logging.py` -> 100% PASS
+- `verify_anomaly_detection.py` -> 100% PASS
+- `verify_alerting_and_quarantine.py` -> 100% PASS
+- **Code Health:** 100% of all Python/JS/JSX source files strictly satisfy the $\le 400$ lines limit.
+
+---
+
+## 19. Upcoming Roadmap
+
+- **Stage 13:** Distributed Redis Caching & Async Background Task Queue
+- **Stage 14:** Comprehensive Cyber-Ops UI Refinement, Dark Mode Glassmorphism & Layout Shift Stabilization
+- **Stage 15:** Production Containerization (Docker Compose) & CI/CD Pipeline
+- **Stage 16:** Final Security Hardening, Penetration Testing & Production Handover
+
 
 
 
