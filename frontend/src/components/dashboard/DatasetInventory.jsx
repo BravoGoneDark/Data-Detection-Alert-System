@@ -144,7 +144,7 @@ export default function DatasetInventory({
       </div>
 
       {/* Dataset Table / Empty State */}
-      {loadingDatasets ? (
+      {loadingDatasets && datasets.length === 0 ? (
         <div className="py-16 text-center text-sm text-slate-400 animate-pulse">
           Loading datasets from secure storage...
         </div>

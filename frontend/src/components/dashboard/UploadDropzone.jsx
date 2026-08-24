@@ -80,7 +80,7 @@ export default function UploadDropzone({
           {/* Stage 13: Async Background Queue Toggle */}
           <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
             <div className="flex items-center gap-2">
-              <span className="text-amber-400 font-bold text-sm">âš¡</span>
+              <span className="text-amber-400 font-bold text-sm">⚡</span>
               <div>
                 <div className="text-xs font-semibold text-slate-200">Async Background Queue</div>
                 <div className="text-[10px] text-slate-400">Offload feature extraction to Redis worker</div>
@@ -99,7 +99,7 @@ export default function UploadDropzone({
             <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-2 animate-fade-in">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-amber-300">
-                  {asyncTask.status === 'COMPLETED' ? 'âœ“ Processing Complete' : 'âš™ï¸ Worker Processing...'}
+                  {asyncTask.status === 'COMPLETED' ? '✓ Processing Complete' : '⚙️ Worker Processing...'}
                 </span>
                 <span className="font-mono text-amber-400 font-bold">{asyncTask.progress || 0}%</span>
               </div>
