@@ -66,7 +66,7 @@ export default function DatasetInventory({
             <h2 className="text-lg font-semibold text-white">Dataset Inventory</h2>
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
-              ⚡ Redis Cached (0.3ms)
+              ⚡ Redis Cache Active
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">

@@ -4,6 +4,7 @@ import io
 import json
 import math
 import re
+import zipfile
 from collections import Counter
 from pathlib import Path
 
@@ -43,14 +44,22 @@ def extract_text_content(filename: str, file_bytes: bytes) -> str:
     if ext == ".docx" or file_bytes.startswith(b"PK\x03\x04"):
         try:
             with zipfile.ZipFile(io.BytesIO(file_bytes)) as docx_zip:
-                if "word/document.xml" in docx_zip.namelist():
-                    xml_content = docx_zip.read("word/document.xml").decode("utf-8", errors="ignore")
-                    text_content = re.sub(r"<[^>]+>", " ", xml_content)
-                    clean_text = " ".join(text_content.split())
-                    if clean_text:
-                        return clean_text
+                extracted_parts = []
+                for name in docx_zip.namelist():
+                    if name.startswith("word/") and name.endswith(".xml"):
+                        xml_content = docx_zip.read(name).decode("utf-8", errors="ignore")
+                        text_content = re.sub(r"<[^>]+>", " ", xml_content)
+                        clean = " ".join(text_content.split())
+                        if clean:
+                            extracted_parts.append(clean)
+                if extracted_parts:
+                    return " ".join(extracted_parts)
         except Exception:
             pass
+
+        # If it was a ZIP/DOCX and extraction failed or yielded no text, do NOT treat raw zip binary as text!
+        if file_bytes.startswith(b"PK\x03\x04"):
+            return ""
 
     # 2. Handle JSON
     if ext in [".json"]:
@@ -69,7 +78,13 @@ def extract_text_content(filename: str, file_bytes: bytes) -> str:
         except Exception:
             pass
 
-    # 3. For CSV/TSV, Markdown, or plain text, return sanitized text content
+    # 3. Detect binary files (NUL bytes or non-text magic headers)
+    sample = file_bytes[:1024]
+    if b"\x00" in sample or sample.startswith((b"\x7fELF", b"\x89PNG", b"\xff\xd8\xff", b"%PDF", b"GIF8")):
+        # Pure binary with no text parser - do not pollute text index
+        return ""
+
+    # 4. For CSV/TSV, Markdown, or plain text, return sanitized text content
     try:
         raw_text = file_bytes.decode("utf-8", errors="replace")
         sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", raw_text)
