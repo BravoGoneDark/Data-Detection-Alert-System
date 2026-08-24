@@ -77,10 +77,10 @@ def process_async_upload(
 
         # Milestone 4: Candidate Pruning & Similarity Evaluation
         update_task_progress(task_id, 70, "Scanning candidate pool via Locality-Sensitive Hashing...")
-        user_obj = db.query(User).filter(User.id == user_id).first() if user_id else None
-
+        user_obj = db.query(User).filter(User.id == user_id).first()
         existing_exact = db.query(Dataset).filter(Dataset.sha256 == file_hash).first()
         if existing_exact and not force:
+            update_task_progress(task_id, 100, "Exact cryptographic match found.")
             record_audit_event(
                 db,
                 event_type="DUPLICATE_DETECTED",
@@ -102,11 +102,23 @@ def process_async_upload(
                 "duplicate": True,
                 "match_type": "EXACT",
                 "similarity_score": 100.0,
-                "existing_dataset": {
+                "existing": {
                     "id": existing_exact.id,
                     "filename": existing_exact.filename,
                     "sha256": existing_exact.sha256,
                     "size_bytes": existing_exact.size_bytes,
+                    "uploaded_at": str(existing_exact.uploaded_at),
+                    "classification": existing_exact.classification,
+                    "uploader_username": existing_exact.uploader.username if existing_exact.uploader else "System",
+                    "download_count": existing_exact.download_count,
+                    "description": existing_exact.description,
+                    "columns": existing_exact.columns or [],
+                    "row_count": existing_exact.row_count,
+                    "col_count": existing_exact.col_count,
+                    "mime_type": existing_exact.mime_type,
+                    "top_keywords": existing_exact.top_keywords or [],
+                    "text_preview": existing_exact.text_preview,
+                    "simhash": existing_exact.simhash,
                 },
             }
 
@@ -128,7 +140,7 @@ def process_async_upload(
                 request=None,
             )
             if dup_result:
-                return dup_result.dict()
+                return dup_result.model_dump(mode="json")
 
         # Milestone 5: CAS Storage & DB Persistence
         update_task_progress(task_id, 85, "Storing payload in Content-Addressable Storage (CAS)...")

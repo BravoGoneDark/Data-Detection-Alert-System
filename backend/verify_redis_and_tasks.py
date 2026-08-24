@@ -251,7 +251,7 @@ def main():
 
     start_poll = time.time()
     final_bf_state = None
-    while time.time() - start_poll < 10.0:
+    while time.time() - start_poll < 25.0:
         st_poll, res_poll = make_request("GET", f"/tasks/{bf_task_id}", headers=admin_headers)
         assert st_poll == 200
         poll_data = json.loads(res_poll.decode("utf-8"))

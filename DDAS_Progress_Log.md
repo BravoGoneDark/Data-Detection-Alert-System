@@ -1303,11 +1303,94 @@ Stage 13 introduces a high-performance **Distributed Redis Caching Layer** and a
 
 ---
 
-## 20. Upcoming Roadmap
+---
+
+## 20. Stage 15 — Production Containerization (Docker Compose) & GitHub Actions CI/CD Pipeline (Complete)
+
+**Date:** August 24, 2026  
+**Status:** Complete & Fully Verified (Multi-container orchestration, NGINX SPA serving, GitHub Actions CI/CD workflow, and Vercel/Cloud deployment configuration).
+
+### 20.1 Architectural Overview & Core Goals
+
+Stage 15 transforms DDAS into an enterprise-ready, containerized platform capable of single-command orchestration via Docker Compose and automatic continuous integration testing via GitHub Actions.
+
+```
+                                  STAGE 15 ARCHITECTURE
+                                  
+                         ┌────────────────────────────────────┐
+                         │   GITHUB ACTIONS CI/CD RUNNER      │
+                         │   • Automated 9-Stage Matrix Run   │
+                         │   • Node.js 22 Production Build    │
+                         │   • Docker Compose Build Check     │
+                         └─────────────────┬──────────────────┘
+                                           │
+                                           ▼
+                       ┌─────────────────────────────────────────┐
+                       │          PRODUCTION DEPLOYMENT          │
+                       └───────────────────┬─────────────────────┘
+                                           │
+           ┌───────────────────────────────┴───────────────────────────────┐
+           ▼                                                               ▼
+┌─────────────────────────────┐                               ┌─────────────────────────────┐
+│    FRONTEND NGINX (PORT 80) │                               │ FASTAPI BACKEND (PORT 8000) │
+│  • High-performance alpine  │─────── Proxy /api/ ──────────▶│  • Python 3.13-slim image   │
+│  • SPA fallback routing     │                               │  • Non-root ddasuser        │
+│  • Gzip compression         │                               │  • Auto-migrations entrypoint│
+│  • Security headers         │                               │  • CAS persistent volume    │
+│  • Vercel/Netlify configs   │                               │  • Healthcheck endpoint     │
+└─────────────────────────────┘                               └──────────────┬──────────────┘
+                                                                             │
+                                             ┌───────────────────────────────┴───────────────┐
+                                             ▼                                               ▼
+                              ┌─────────────────────────────┐                 ┌─────────────────────────────┐
+                              │     POSTGRESQL 16 (5432)    │                 │       REDIS 7 (6379)        │
+                              │  • pg_isready healthcheck   │                 │  • redis-cli ping check     │
+                              │  • Persistent pg_data       │                 │  • Appendonly persistence   │
+                              └─────────────────────────────┘                 └─────────────────────────────┘
+```
+
+### 20.2 Components & Configurations Created
+
+1. **Backend Multi-Stage Containerization (`backend/Dockerfile`, `backend/entrypoint.sh`):**
+   - Base image: `python:3.13-slim` with multi-stage compilation to keep image size small.
+   - Security: Dedicated non-root user `ddasuser:ddasgroup` (UID 1000).
+   - Automated startup orchestration: `entrypoint.sh` polls database readiness, automatically runs `alembic upgrade head`, and starts Uvicorn with configurable worker count.
+   - Built-in container healthcheck: `curl -f http://localhost:8000/health`.
+2. **Frontend Multi-Stage NGINX Container (`frontend/Dockerfile`, `frontend/nginx.conf`):**
+   - Stage 1: `node:22-alpine` runs `npm ci` and `npm run build`.
+   - Stage 2: `nginx:alpine` runtime with custom `nginx.conf` configuring SPA routing (`try_files $uri $uri/ /index.html`), gzip compression, and security headers (`X-Frame-Options`, `X-Content-Type-Options`, `X-XSS-Protection`).
+   - Built-in healthcheck: `wget -q --spider http://localhost/healthz`.
+3. **Multi-Platform Cloud Deployment Support:**
+   - **Vercel**: Added `frontend/vercel.json` with SPA rewrites and security headers for one-click Vercel deployment.
+   - **Netlify / Cloudflare Pages**: Added `frontend/public/_redirects`.
+   - **API URL Configuration**: Updated `classifications.js` to dynamically bind `import.meta.env.VITE_API_URL || 'http://localhost:8000'`.
+4. **Unified Docker Compose Stack (`docker-compose.yml`):**
+   - Orchestrates all 4 services: `ddas_postgres`, `ddas_redis`, `ddas_backend`, `ddas_frontend`.
+   - Healthcheck dependencies (`condition: service_healthy`).
+   - Isolated Docker bridge network `ddas_network`.
+   - Named persistent storage volumes: `ddas_pg_data`, `ddas_redis_data`, `ddas_cas_data`.
+5. **GitHub Actions CI/CD Workflow (`.github/workflows/ci.yml`):**
+   - Job 1 (`backend-test-matrix`): Spins up PostgreSQL 16 & Redis 7 service containers in Ubuntu runner, applies Alembic migrations, starts FastAPI, and runs the entire **9-stage automated test matrix**.
+   - Job 2 (`frontend-build`): Compiles the React/Vite distribution with Node.js 22.
+   - Job 3 (`docker-compose-build`): Validates `docker compose config` and builds container images.
+6. **Container Health Suite (`backend/verify_container_health.py`):**
+   - Tests `/health`, `/`, `/openapi.json`, and frontend SPA reachability.
+
+### 20.3 Verification Results
+
+- `docker compose config` -> Validated 100%
+- `frontend` production build (`npm run build`) -> 1.13s compile time with 0 errors
+- `verify_container_health.py` -> 100% PASS
+- All 9 backend regression test suites -> 100% PASS
+- Code line count limit ($\le 400$ lines) -> 100% compliance across all source files.
+
+---
+
+## 21. Upcoming Roadmap
 
 - **Stage 14:** Comprehensive Cyber-Ops UI Refinement, Dark Mode Glassmorphism & Layout Shift Stabilization
-- **Stage 15:** Production Containerization (Docker Compose) & CI/CD Pipeline
 - **Stage 16:** Final Security Hardening, Penetration Testing & Production Handover
+
 
 
 

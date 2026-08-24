@@ -1,0 +1,126 @@
+name: DDAS Enterprise CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  backend-test-matrix:
+    name: Backend 9-Stage Verification Matrix
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ddas_user
+          POSTGRES_PASSWORD: ddas_dev_password
+          POSTGRES_DB: ddas_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements.txt'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+      - name: Run Database Migrations
+        env:
+          DATABASE_URL: postgresql://ddas_user:ddas_dev_password@localhost:5432/ddas_db
+          JWT_SECRET_KEY: ddas_ci_test_secret_key_32_bytes_minimum_length_required
+        run: |
+          cd backend
+          alembic upgrade head
+
+      - name: Start FastAPI API Gateway
+        env:
+          DATABASE_URL: postgresql://ddas_user:ddas_dev_password@localhost:5432/ddas_db
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: ddas_ci_test_secret_key_32_bytes_minimum_length_required
+        run: |
+          cd backend
+          python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
+          sleep 3
+          curl -f http://127.0.0.1:8000/health
+
+      - name: Run 9-Stage Automated Regression Test Matrix
+        env:
+          DATABASE_URL: postgresql://ddas_user:ddas_dev_password@localhost:5432/ddas_db
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET_KEY: ddas_ci_test_secret_key_32_bytes_minimum_length_required
+        run: |
+          python backend/verify_cas_and_rbac.py
+          python backend/verify_metadata_similarity.py
+          python backend/verify_tfidf_content_similarity.py
+          python backend/verify_fuzzy_similarity.py
+          python backend/verify_lsh_indexing.py
+          python backend/verify_audit_logging.py
+          python backend/verify_anomaly_detection.py
+          python backend/verify_alerting_and_quarantine.py
+          python backend/verify_redis_and_tasks.py
+
+  frontend-build:
+    name: Frontend Production Bundle Compilation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install Frontend Dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Build Vite Production Distribution
+        run: |
+          cd frontend
+          npm run build
+
+  docker-compose-build:
+    name: Multi-Container Docker Compose Build Validation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose Configuration & Build Images
+        run: |
+          docker compose config
+          docker compose build

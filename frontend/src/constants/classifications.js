@@ -1,6 +1,13 @@
 // src/constants/classifications.js
 
-export const API_URL = 'http://localhost:8000';
+export const API_URL = (() => {
+  if (typeof window !== 'undefined') {
+    if (window.location.port === '3000' || window.location.port === '80' || !window.location.port) {
+      return '/api';
+    }
+  }
+  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+})();
 
 export const CLASSIFICATIONS = [
   { value: 'INTERNAL', label: 'Internal', desc: 'Standard internal access (Students, Faculty, Researchers, Admins)' },

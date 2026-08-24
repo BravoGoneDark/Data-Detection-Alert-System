@@ -28,7 +28,10 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        "http://localhost:80",
+        "http://localhost",
     ],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,11 +49,19 @@ app.include_router(tasks_router)
 app.include_router(redis_admin_router)
 
 
-
 @app.get("/")
 def root():
     return {
         "platform": "DDAS - Data Detection Alert System",
         "status": "online",
+        "version": "1.0.0",
+    }
+
+
+@app.get("/health")
+def healthcheck():
+    return {
+        "status": "healthy",
+        "gateway": "online",
         "version": "1.0.0",
     }
