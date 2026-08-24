@@ -24,5 +24,8 @@ echo "Applying latest database migrations via Alembic..."
 alembic upgrade head
 echo "✓ Database schema synchronized."
 
-echo "Starting Uvicorn ASGI Server on port 8000..."
-exec uvicorn main:app --host 0.0.0.0 --port 8000 --workers ${UVICORN_WORKERS:-2}
+PORT="${PORT:-8000}"
+WORKERS="${UVICORN_WORKERS:-${WEB_CONCURRENCY:-1}}"
+
+echo "Starting Uvicorn ASGI Server on port ${PORT} with ${WORKERS} worker(s)..."
+exec uvicorn main:app --host 0.0.0.0 --port "${PORT}" --workers "${WORKERS}"
