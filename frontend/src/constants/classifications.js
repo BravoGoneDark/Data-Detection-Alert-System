@@ -1,12 +1,13 @@
 // src/constants/classifications.js
 
 export const API_URL = (() => {
-  if (typeof window !== 'undefined') {
-    if (window.location.port === '3000' || window.location.port === '80' || !window.location.port) {
-      return '/api';
-    }
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
   }
-  return import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  if (typeof window !== 'undefined' && window.location.port === '3000') {
+    return '/api';
+  }
+  return 'http://localhost:8000';
 })();
 
 export const CLASSIFICATIONS = [
