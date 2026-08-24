@@ -73,8 +73,14 @@ async def get_lsh_statistics(
     current_user: User = Depends(require_permission("dataset:view")),
 ):
     """
-    Returns telemetry metrics for the Locality-Sensitive Hashing (LSH) index.
+    Returns telemetry metrics for the Locality-Sensitive Hashing (LSH) index with Redis caching.
     """
+    from app.redis_client import get_cached_json, set_cached_json
+    cache_key = "ddas:cache:lsh:stats"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return cached
+
     total_entries = db.query(LSHBucket).count()
     unique_keys = db.query(LSHBucket.bucket_key).distinct().count()
     indexed_datasets = db.query(LSHBucket.dataset_id).distinct().count()
@@ -84,7 +90,7 @@ async def get_lsh_statistics(
     avg_buckets = round(total_entries / max(1, indexed_datasets), 2)
     collision_density = round(total_entries / max(1, unique_keys), 2)
 
-    return {
+    stats = {
         "status": "active",
         "total_bucket_entries": total_entries,
         "unique_bucket_keys": unique_keys,
@@ -95,6 +101,33 @@ async def get_lsh_statistics(
         "collision_density": collision_density,
         "simhash_config": {"bands": 4, "bits_per_band": 16},
         "minhash_config": {"bands": 16, "rows_per_band": 4},
+    }
+    set_cached_json(cache_key, stats, ttl_seconds=15)
+    return stats
+
+
+@router.post("/backfill-async", status_code=202)
+async def backfill_lsh_buckets_async(
+    current_user: User = Depends(require_permission("dataset:upload")),
+):
+    """
+    Submits a batch LSH re-indexing task to the asynchronous background worker queue.
+    """
+    from app.task_queue import enqueue_task
+    from app.async_uploader import process_async_lsh_backfill
+
+    task_id = enqueue_task(
+        task_type="LSH_BACKFILL",
+        func=process_async_lsh_backfill,
+        user_id=current_user.id,
+        username=current_user.username,
+        name="LSH Index Backfill",
+        created_by=current_user.username,
+    )
+    return {
+        "task_id": task_id,
+        "status": "PENDING",
+        "message": "LSH bucket backfill queued for asynchronous execution.",
     }
 
 
@@ -107,13 +140,14 @@ async def backfill_lsh_buckets(
     """
     Backfills LSH bucket entries for all existing datasets that do not have them indexed.
     """
+    from app.redis_client import delete_cache_key
     all_datasets = db.query(Dataset).all()
     storage = get_storage()
     backfilled_count = 0
 
     for d in all_datasets:
         sim_val = d.simhash
-        min_val = parse_minhash_json(d.minhash_json)
+        min_val = parse_minhash_json(d.minhash_sig if hasattr(d, 'minhash_sig') else getattr(d, 'minhash_json', None))
         top_kw = parse_keywords_json(d.top_keywords_json)
         cols = parse_db_columns(d.columns_json)
 
@@ -126,7 +160,10 @@ async def backfill_lsh_buckets(
                 d.simhash = sim_val
             if not min_val:
                 min_val = compute_minhash(text if text else d.filename)
-                d.minhash_json = json.dumps(min_val)
+                if hasattr(d, 'minhash_sig'):
+                    d.minhash_sig = json.dumps(min_val)
+                else:
+                    d.minhash_json = json.dumps(min_val)
             db.commit()
 
         index_dataset_lsh_buckets(
@@ -138,6 +175,8 @@ async def backfill_lsh_buckets(
             columns=cols,
         )
         backfilled_count += 1
+
+    delete_cache_key("ddas:cache:lsh:stats")
 
     record_audit_event(
         db,

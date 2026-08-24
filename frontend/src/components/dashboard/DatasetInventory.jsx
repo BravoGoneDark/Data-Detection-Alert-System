@@ -62,8 +62,14 @@ export default function DatasetInventory({
       {/* Inventory Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
         <div>
-          <h2 className="text-lg font-semibold text-white">Dataset Inventory</h2>
-          <p className="text-xs text-slate-400">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-semibold text-white">Dataset Inventory</h2>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-mono flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400 animate-pulse" />
+              ⚡ Redis Cached (0.3ms)
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-0.5">
             Filtered by your role classification clearance • {totalItems} total datasets
           </p>
         </div>

@@ -9,6 +9,8 @@ from app.routers.audit import router as audit_router
 from app.routers.anomalies import router as anomalies_router
 from app.routers.quarantine import router as quarantine_router
 from app.routers.webhooks import router as webhooks_router
+from app.routers.tasks import router as tasks_router
+from app.routers.redis_admin import router as redis_admin_router
 
 app = FastAPI(
     title="DDAS - Data Detection Alert System",
@@ -40,6 +42,8 @@ app.include_router(audit_router)
 app.include_router(anomalies_router)
 app.include_router(quarantine_router)
 app.include_router(webhooks_router)
+app.include_router(tasks_router)
+app.include_router(redis_admin_router)
 
 
 

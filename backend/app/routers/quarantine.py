@@ -74,7 +74,13 @@ async def get_quarantine_statistics(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("dataset:view")),
 ):
-    """Returns real-time containment statistics and status breakdown."""
+    """Returns real-time containment statistics and status breakdown with Redis caching."""
+    from app.redis_client import get_cached_json, set_cached_json
+    cache_key = "ddas:cache:quarantine:stats"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return QuarantineStatsResponse(**cached)
+
     active_count = db.query(QuarantineRecord).filter(QuarantineRecord.status == "ACTIVE").count()
     total_count = db.query(QuarantineRecord).count()
 
@@ -83,11 +89,13 @@ async def get_quarantine_statistics(
     for (st,) in all_records:
         st_counts[st] = st_counts.get(st, 0) + 1
 
-    return QuarantineStatsResponse(
-        active_quarantines=active_count,
-        total_quarantined_all_time=total_count,
-        status_breakdown=st_counts,
-    )
+    stats_dict = {
+        "active_quarantines": active_count,
+        "total_quarantined_all_time": total_count,
+        "status_breakdown": st_counts,
+    }
+    set_cached_json(cache_key, stats_dict, ttl_seconds=10)
+    return QuarantineStatsResponse(**stats_dict)
 
 
 @router.post("/admin/quarantine", response_model=QuarantineRecordOut)
@@ -98,6 +106,7 @@ async def create_manual_quarantine(
     current_user: User = Depends(require_permission("dataset:upload")),
 ):
     """Manually subjects a user account to administrative quarantine containment."""
+    from app.redis_client import delete_cache_key
     target_user = db.query(User).filter(User.username == payload.username).first()
     target_user_id = target_user.id if target_user else None
 
@@ -111,6 +120,8 @@ async def create_manual_quarantine(
         ip_address=request.client.host if request.client else None,
         request=request,
     )
+
+    delete_cache_key("ddas:cache:quarantine:stats")
 
     return QuarantineRecordOut(
         id=record.id,
@@ -137,6 +148,7 @@ async def release_quarantine_record(
     current_user: User = Depends(require_permission("dataset:upload")),
 ):
     """Lifts security quarantine containment and restores account privileges."""
+    from app.redis_client import delete_cache_key
     try:
         record = release_user_quarantine(
             db=db,
@@ -147,6 +159,8 @@ async def release_quarantine_record(
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    delete_cache_key("ddas:cache:quarantine:stats")
 
     return QuarantineRecordOut(
         id=record.id,

@@ -26,6 +26,10 @@ from app.routers.lsh import index_dataset_lsh_buckets, parse_keywords_json
 from app.duplicate_evaluator import evaluate_duplicate_candidates
 from app.anomaly_detector import evaluate_download_anomaly
 from app.quarantine import is_user_quarantined, evaluate_auto_quarantine
+from app.redis_client import get_cached_json, set_cached_json, delete_cache_pattern, delete_cache_key
+from app.task_queue import enqueue_task
+from app.async_uploader import process_async_upload
+from app.dataset_helpers import build_exact_duplicate_result, serialize_dataset_record
 from app.schemas import (
     UploadResult,
     ExistingDataset,
@@ -88,50 +92,16 @@ async def upload_dataset(
                 "sha256": file_hash,
             },
         )
-        uploader_name = existing_exact.uploader.username if existing_exact.uploader else "System"
-        existing_info = ExistingDataset(
-            id=existing_exact.id,
-            filename=existing_exact.filename,
-            sha256=existing_exact.sha256,
-            size_bytes=existing_exact.size_bytes,
-            uploaded_at=existing_exact.uploaded_at,
-            classification=existing_exact.classification or "INTERNAL",
-            uploader_username=uploader_name,
-            download_count=existing_exact.download_count,
-            description=existing_exact.description,
-            columns=parse_db_columns(existing_exact.columns_json),
-            row_count=existing_exact.row_count,
-            col_count=existing_exact.col_count,
-            mime_type=existing_exact.mime_type,
-            top_keywords=parse_keywords_json(existing_exact.top_keywords_json),
-            text_preview=existing_exact.text_preview,
-            simhash=existing_exact.simhash,
-            hamming_distance=0,
-        )
-        return UploadResult(
-            id=None,
-            filename=file.filename,
-            sha256=file_hash,
-            size_bytes=len(file_bytes),
-            duplicate=True,
-            match_type="EXACT",
-            similarity_score=100.0,
-            hamming_distance=0,
-            simhash=simhash_hex,
-            score_breakdown=ScoreBreakdown(
-                filename_similarity=100.0,
-                schema_similarity=100.0,
-                size_proximity=100.0,
-                row_proximity=100.0,
-            ),
+        return build_exact_duplicate_result(
+            existing=existing_exact,
+            incoming_filename=file.filename,
+            file_bytes_len=len(file_bytes),
+            file_hash=file_hash,
+            simhash_hex=simhash_hex,
             classification=classification,
-            extracted_columns=meta.columns,
-            row_count=meta.row_count,
-            col_count=meta.col_count,
-            top_keywords=top_kw,
-            shared_keywords=top_kw,
+            meta=meta,
+            top_kw=top_kw,
             text_preview=text_preview,
-            existing=existing_info,
         )
 
     # 4. Check for Fuzzy Fingerprint, Content Cosine, and Metadata Similarity via LSH Candidate Retrieval
@@ -159,21 +129,27 @@ async def upload_dataset(
     storage = get_storage()
     rel_path = storage.save_file(file_hash, file_bytes)
 
+    clean_preview = text_preview.replace("\x00", "").replace("\u0000", "") if text_preview else None
+    clean_desc = description.replace("\x00", "").replace("\u0000", "") if description else None
+    clean_filename = file.filename.replace("\x00", "").replace("\u0000", "")
+    clean_columns = [c.replace("\x00", "") for c in meta.columns] if meta.columns else None
+    clean_top_kw = [k.replace("\x00", "") for k in top_kw] if top_kw else None
+
     dataset = Dataset(
-        filename=file.filename,
+        filename=clean_filename,
         sha256=file_hash,
         size_bytes=len(file_bytes),
         classification=classification,
         uploader_id=current_user.id,
         storage_path=rel_path,
         download_count=0,
-        description=description,
-        columns_json=json.dumps(meta.columns) if meta.columns else None,
+        description=clean_desc,
+        columns_json=json.dumps(clean_columns) if clean_columns else None,
         row_count=meta.row_count,
         col_count=meta.col_count,
         mime_type=meta.mime_type,
-        top_keywords_json=json.dumps(top_kw) if top_kw else None,
-        text_preview=text_preview,
+        top_keywords_json=json.dumps(clean_top_kw) if clean_top_kw else None,
+        text_preview=clean_preview,
         simhash=simhash_hex,
         minhash_json=json.dumps(minhash_sig) if minhash_sig else None,
     )
@@ -187,9 +163,13 @@ async def upload_dataset(
         dataset.id,
         simhash_val=simhash_hex,
         minhash_sig=minhash_sig,
-        top_keywords=top_kw,
-        columns=meta.columns,
+        top_keywords=clean_top_kw or [],
+        columns=clean_columns or [],
     )
+
+    # Invalidate Redis Caches
+    delete_cache_pattern("ddas:cache:datasets*")
+    delete_cache_key("ddas:cache:lsh:stats")
 
     # Record Audit Event
     audit_event = "DUPLICATE_OVERRIDE" if force else "DATASET_UPLOAD"
@@ -232,37 +212,63 @@ async def upload_dataset(
     )
 
 
+@router.post("/upload-async", status_code=202)
+async def upload_dataset_async(
+    file: UploadFile = File(...),
+    classification: str = Form("INTERNAL"),
+    description: str | None = Form(None),
+    force: bool = Form(False),
+    current_user: User = Depends(require_permission("dataset:upload")),
+):
+    """
+    Submits a dataset for asynchronous background processing.
+    Returns HTTP 202 Accepted with a task_id for tracking progress.
+    """
+    file_bytes = await file.read()
+    task_id = enqueue_task(
+        task_type="DATASET_UPLOAD",
+        func=process_async_upload,
+        filename=file.filename,
+        file_bytes=file_bytes,
+        classification=classification,
+        description=description,
+        force=force,
+        user_id=current_user.id,
+        username=current_user.username,
+        name=f"Upload: {file.filename}",
+        created_by=current_user.username,
+        metadata={"filename": file.filename, "size_bytes": len(file_bytes), "classification": classification},
+    )
+    return {
+        "task_id": task_id,
+        "status": "PENDING",
+        "message": f"Dataset '{file.filename}' queued for asynchronous processing.",
+        "filename": file.filename,
+    }
+
+
 @router.get("", response_model=list[DatasetOut])
 async def list_datasets(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission("dataset:view")),
 ):
-    """List datasets accessible by current user based on RBAC clearance level."""
-    datasets = db.query(Dataset).all()
-    results = []
-    for d in datasets:
-        if can_user_access_classification(current_user, d.classification):
-            results.append(
-                DatasetOut(
-                    id=d.id,
-                    filename=d.filename,
-                    sha256=d.sha256,
-                    size_bytes=d.size_bytes,
-                    uploaded_at=d.uploaded_at,
-                    classification=d.classification or "INTERNAL",
-                    uploader_username=d.uploader.username if d.uploader else "System",
-                    download_count=d.download_count,
-                    description=d.description,
-                    columns=parse_db_columns(d.columns_json),
-                    row_count=d.row_count,
-                    col_count=d.col_count,
-                    mime_type=d.mime_type,
-                    top_keywords=parse_keywords_json(d.top_keywords_json),
-                    text_preview=d.text_preview,
-                    simhash=d.simhash,
-                )
-            )
-    return results
+    """List datasets accessible by current user based on RBAC clearance level with Redis caching."""
+    cache_key = "ddas:cache:datasets:list"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return [
+            DatasetOut(**d) for d in cached
+            if can_user_access_classification(current_user, d.get("classification"))
+        ]
+
+    datasets = db.query(Dataset).order_by(Dataset.uploaded_at.desc()).all()
+    cached_data = [serialize_dataset_record(d) for d in datasets]
+    set_cached_json(cache_key, cached_data, ttl_seconds=60)
+
+    return [
+        DatasetOut(**d) for d in cached_data
+        if can_user_access_classification(current_user, d.get("classification"))
+    ]
 
 
 @router.get("/{dataset_id}/download")

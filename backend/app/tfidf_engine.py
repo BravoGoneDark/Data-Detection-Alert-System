@@ -35,14 +35,27 @@ STOP_WORDS = {
 def extract_text_content(filename: str, file_bytes: bytes) -> str:
     """
     Extracts searchable textual representation from file bytes.
-    Works on plain text, markdown, CSV, TSV, and JSON.
+    Works on plain text, markdown, CSV, TSV, JSON, and DOCX files.
     """
     ext = Path(filename).suffix.lower()
-    raw_text = file_bytes.decode("utf-8", errors="replace")
 
+    # 1. Handle DOCX Word Documents (extract text from word/document.xml)
+    if ext == ".docx" or file_bytes.startswith(b"PK\x03\x04"):
+        try:
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as docx_zip:
+                if "word/document.xml" in docx_zip.namelist():
+                    xml_content = docx_zip.read("word/document.xml").decode("utf-8", errors="ignore")
+                    text_content = re.sub(r"<[^>]+>", " ", xml_content)
+                    clean_text = " ".join(text_content.split())
+                    if clean_text:
+                        return clean_text
+        except Exception:
+            pass
+
+    # 2. Handle JSON
     if ext in [".json"]:
         try:
-            data = json.loads(raw_text)
+            data = json.loads(file_bytes.decode("utf-8", errors="replace"))
             if isinstance(data, list):
                 extracted = []
                 for item in data:
@@ -56,8 +69,13 @@ def extract_text_content(filename: str, file_bytes: bytes) -> str:
         except Exception:
             pass
 
-    # For CSV/TSV or plain text, return normalized text content
-    return raw_text
+    # 3. For CSV/TSV, Markdown, or plain text, return sanitized text content
+    try:
+        raw_text = file_bytes.decode("utf-8", errors="replace")
+        sanitized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", " ", raw_text)
+        return " ".join(sanitized.split())
+    except Exception:
+        return ""
 
 
 def tokenize(text: str) -> list[str]:

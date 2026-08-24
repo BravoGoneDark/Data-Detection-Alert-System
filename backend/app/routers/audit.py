@@ -71,8 +71,14 @@ async def get_audit_log_statistics(
     current_user: User = Depends(require_permission("dataset:view")),
 ):
     """
-    Returns high-level security statistics and telemetry from the audit ledger.
+    Returns high-level security statistics and telemetry from the audit ledger with Redis caching.
     """
+    from app.redis_client import get_cached_json, set_cached_json
+    cache_key = "ddas:cache:audit:stats"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return AuditStatsResponse(**cached)
+
     total = db.query(AuditLog).count()
 
     # Severity counts
@@ -102,13 +108,15 @@ async def get_audit_log_statistics(
         for uname, count in sorted(user_denial_counts.items(), key=lambda x: x[1], reverse=True)[:5]
     ]
 
-    return AuditStatsResponse(
-        total_events=total,
-        severity_breakdown={
+    stats_dict = {
+        "total_events": total,
+        "severity_breakdown": {
             "INFO": info_count,
             "WARNING": warning_count,
             "CRITICAL": critical_count,
         },
-        event_type_breakdown=event_counts,
-        top_denied_users=top_denied,
-    )
+        "event_type_breakdown": event_counts,
+        "top_denied_users": top_denied,
+    }
+    set_cached_json(cache_key, stats_dict, ttl_seconds=10)
+    return AuditStatsResponse(**stats_dict)

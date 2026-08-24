@@ -13,20 +13,15 @@ import LshArchitectureModal from './components/modals/LshArchitectureModal';
 import AnomalyDefenseModal from './components/modals/AnomalyDefenseModal';
 import QuarantineModal from './components/modals/QuarantineModal';
 import WebhookConfigModal from './components/modals/WebhookConfigModal';
+import RedisTasksModal from './components/modals/RedisTasksModal';
 import { useSecurityFeeds } from './hooks/useSecurityFeeds';
 import { useQuarantineFeeds } from './hooks/useQuarantineFeeds';
+import { useDatasetUpload } from './hooks/useDatasetUpload';
 
 function UploadPanel() {
   const { token, logout } = useAuth();
-  const [file, setFile] = useState(null);
-  const [classification, setClassification] = useState('INTERNAL');
-  const [description, setDescription] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
   const [datasets, setDatasets] = useState([]);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
 
   // Modal Visibility State
   const [showLshModal, setShowLshModal] = useState(false);
@@ -34,29 +29,11 @@ function UploadPanel() {
   const [showAnomalyModal, setShowAnomalyModal] = useState(false);
   const [showQuarantineModal, setShowQuarantineModal] = useState(false);
   const [showWebhooksModal, setShowWebhooksModal] = useState(false);
+  const [showRedisModal, setShowRedisModal] = useState(false);
 
   // Security Telemetry Feeds Hooks
   const feeds = useSecurityFeeds(token);
   const qFeeds = useQuarantineFeeds(token);
-
-  useEffect(() => {
-    if (showAuditModal && token) feeds.fetchAuditLogs();
-  }, [showAuditModal, feeds.auditSeverity, feeds.auditEventType, feeds.auditUserFilter, token]);
-
-  useEffect(() => {
-    if ((showAnomalyModal || token) && token) feeds.fetchAnomalies();
-  }, [showAnomalyModal, feeds.anomalySeverity, feeds.anomalyStatus, feeds.anomalyType, feeds.anomalyUserFilter, token]);
-
-  useEffect(() => {
-    if ((showQuarantineModal || token) && token) {
-      qFeeds.fetchQuarantines();
-      qFeeds.fetchMyQuarantineStatus();
-    }
-  }, [showQuarantineModal, qFeeds.quarantineStatusFilter, qFeeds.quarantineUserFilter, token]);
-
-  useEffect(() => {
-    if (showWebhooksModal && token) qFeeds.fetchWebhooks();
-  }, [showWebhooksModal, token]);
 
   const fetchDatasets = async () => {
     if (!token) return;
@@ -80,6 +57,28 @@ function UploadPanel() {
     }
   };
 
+  // Dataset Upload & Queue Operations Hook
+  const uploadOps = useDatasetUpload(token, logout, fetchDatasets, feeds, qFeeds);
+
+  useEffect(() => {
+    if (showAuditModal && token) feeds.fetchAuditLogs();
+  }, [showAuditModal, feeds.auditSeverity, feeds.auditEventType, feeds.auditUserFilter, token]);
+
+  useEffect(() => {
+    if ((showAnomalyModal || token) && token) feeds.fetchAnomalies();
+  }, [showAnomalyModal, feeds.anomalySeverity, feeds.anomalyStatus, feeds.anomalyType, feeds.anomalyUserFilter, token]);
+
+  useEffect(() => {
+    if ((showQuarantineModal || token) && token) {
+      qFeeds.fetchQuarantines();
+      qFeeds.fetchMyQuarantineStatus();
+    }
+  }, [showQuarantineModal, qFeeds.quarantineStatusFilter, qFeeds.quarantineUserFilter, token]);
+
+  useEffect(() => {
+    if (showWebhooksModal && token) qFeeds.fetchWebhooks();
+  }, [showWebhooksModal, token]);
+
   useEffect(() => {
     if (token) {
       fetchDatasets();
@@ -99,106 +98,10 @@ function UploadPanel() {
 
   // Clear quarantine alert message once quarantine is lifted
   useEffect(() => {
-    if (!qFeeds.myQuarantine?.is_quarantined && error && error.toLowerCase().includes('quarantin')) {
-      setError(null);
+    if (!qFeeds.myQuarantine?.is_quarantined && uploadOps.error && uploadOps.error.toLowerCase().includes('quarantin')) {
+      uploadOps.setError(null);
     }
   }, [qFeeds.myQuarantine?.is_quarantined]);
-
-  const handleUpload = async (e, forceUpload = false) => {
-    if (e) e.preventDefault();
-    if (!file) return;
-
-    setLoading(true);
-    setError(null);
-    if (!forceUpload) setResult(null);
-
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('classification', classification);
-    if (description) formData.append('description', description);
-    if (forceUpload) formData.append('force', 'true');
-
-    try {
-      const response = await fetch(`${API_URL}/datasets/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (response.status === 401) {
-        logout();
-        return;
-      }
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Upload failed');
-      }
-
-      const data = await response.json();
-      setResult(data);
-
-      if (!data.duplicate || forceUpload) {
-        setFile(null);
-        setDescription('');
-        const fileInput = document.getElementById('file-upload');
-        if (fileInput) fileInput.value = '';
-        await fetchDatasets();
-        await feeds.fetchLshStats();
-        await feeds.fetchAnomalies();
-      }
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDownload = async (datasetId, filename) => {
-    setDownloadingId(datasetId);
-    setError(null);
-
-    try {
-      const response = await fetch(`${API_URL}/datasets/${datasetId}/download`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      if (response.status === 401) {
-        logout();
-        return;
-      }
-
-      if (response.status === 403) {
-        const errData = await response.json().catch(() => ({}));
-        await qFeeds.fetchMyQuarantineStatus();
-        await qFeeds.fetchQuarantines();
-        throw new Error(`[SECURITY ACCESS DENIAL] ${errData.detail || 'Access restricted by security policy'}`);
-      }
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.detail || 'Download failed');
-      }
-
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-
-      await fetchDatasets();
-      await feeds.fetchAnomalies();
-      await qFeeds.fetchMyQuarantineStatus();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setDownloadingId(null);
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-rose-500 selection:text-white">
@@ -211,6 +114,7 @@ function UploadPanel() {
           onOpenAnomaly={() => setShowAnomalyModal(true)}
           onOpenQuarantine={() => setShowQuarantineModal(true)}
           onOpenWebhooks={() => setShowWebhooksModal(true)}
+          onOpenRedis={() => setShowRedisModal(true)}
           activeThreatsCount={feeds.anomalyStats?.active_threats || 0}
           activeQuarantinesCount={qFeeds.quarantineStats?.active_quarantines || 0}
           onLogout={logout}
@@ -225,14 +129,14 @@ function UploadPanel() {
           loadingLsh={feeds.loadingLsh}
           backfillingLsh={feeds.backfillingLsh}
           lshSuccessMsg={feeds.lshSuccessMsg}
-          onBackfill={() => feeds.handleLshBackfill(setError)}
+          onBackfill={() => feeds.handleLshBackfill(uploadOps.setError)}
         />
 
         {/* Global Error / Alert Banner */}
-        {error && (
+        {uploadOps.error && (
           <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-sm flex items-center justify-between shadow-lg">
-            <span>⚠ {error}</span>
-            <button onClick={() => setError(null)} className="text-red-400 hover:text-red-200 text-xs font-semibold px-2 py-0.5 rounded bg-red-900/40">✕ Dismiss</button>
+            <span>⚠ {uploadOps.error}</span>
+            <button onClick={() => uploadOps.setError(null)} className="text-red-400 hover:text-red-200 text-xs font-semibold px-2 py-0.5 rounded bg-red-900/40">✕ Dismiss</button>
           </div>
         )}
 
@@ -240,17 +144,20 @@ function UploadPanel() {
           {/* Left Column: Upload Dropzone */}
           <div className="lg:col-span-4 space-y-6">
             <UploadDropzone
-              file={file}
-              setFile={setFile}
-              classification={classification}
-              setClassification={setClassification}
-              description={description}
-              setDescription={setDescription}
-              loading={loading}
-              result={result}
-              setResult={setResult}
-              onUpload={handleUpload}
-              onDownload={handleDownload}
+              file={uploadOps.file}
+              setFile={uploadOps.setFile}
+              classification={uploadOps.classification}
+              setClassification={uploadOps.setClassification}
+              description={uploadOps.description}
+              setDescription={uploadOps.setDescription}
+              loading={uploadOps.loading}
+              result={uploadOps.result}
+              setResult={uploadOps.setResult}
+              onUpload={uploadOps.handleUpload}
+              onDownload={uploadOps.handleDownload}
+              isAsyncMode={uploadOps.isAsyncMode}
+              setIsAsyncMode={uploadOps.setIsAsyncMode}
+              asyncTask={uploadOps.asyncTask}
             />
           </div>
 
@@ -260,14 +167,20 @@ function UploadPanel() {
               datasets={datasets}
               loadingDatasets={loadingDatasets}
               onRefresh={fetchDatasets}
-              onDownload={handleDownload}
-              downloadingId={downloadingId}
+              onDownload={uploadOps.handleDownload}
+              downloadingId={uploadOps.downloadingId}
               isQuarantined={qFeeds.myQuarantine?.is_quarantined}
             />
           </div>
         </div>
 
         {/* Modals */}
+        <RedisTasksModal
+          isOpen={showRedisModal}
+          onClose={() => setShowRedisModal(false)}
+          token={token}
+        />
+
         <LshArchitectureModal
           isOpen={showLshModal}
           onClose={() => setShowLshModal(false)}

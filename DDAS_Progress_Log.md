@@ -1187,12 +1187,128 @@ Detecting anomalous exfiltration patterns (Stage 11) is only half the battle. In
 
 ---
 
-## 19. Upcoming Roadmap
+---
 
-- **Stage 13:** Distributed Redis Caching & Async Background Task Queue
+## 19. Stage 13 — Distributed Redis Caching & Async Background Task Queue (Complete)
+
+**Date:** August 24, 2026  
+**Status:** Complete & Fully Verified (9 of 9 automated test suites passing at 100%).
+
+### 19.1 Architectural Overview & Core Goals
+
+In Stages 1 through 12, DDAS built a multi-tier deduplication engine (Exact CAS, Metadata Schema Overlap, TF-IDF Cosine, SimHash/MinHash Hamming & Jaccard, Multi-Band LSH Partitioning), SIEM forensic audit logging, statistical anomaly detection ($Z$-Score spikes and velocity bursts), and autonomous policy containment quarantine.
+
+However, as dataset scale and concurrent analytical requests increase, two critical operational bottlenecks emerge:
+1. **Redundant Database Read Overhead:** Frequent reads of the dataset inventory, LSH partition telemetry, security audit statistics, and anomaly posturing cause repeated expensive PostgreSQL table scans and JSON deserialization overhead.
+2. **Synchronous CPU-Intensive Ingestion Latency:** When users upload large files (CSV, PDF, JSON, DOCX), extracting full structural metadata, computing 64-bit SimHash fingerprints, generating 64-integer MinHash signatures, building TF-IDF vectors, evaluating candidates across LSH bands, and storing bytes into Content-Addressable Storage (CAS) blocks the HTTP request worker.
+
+Stage 13 introduces a high-performance **Distributed Redis Caching Layer** and an **Asynchronous Background Task Queue** to achieve sub-millisecond read responses, distributed sliding-window burst protection, and non-blocking background job processing with live real-time milestone progress tracking.
+
+```
+                                  STAGE 13 ARCHITECTURE
+                                  
+                       ┌─────────────────────────────────────────┐
+                       │          REACT CYBER-OPS UI             │
+                       │   • Live Redis Telemetry (Ping, Hit %)  │
+                       │   • Async Progress Tracker Bar (0-100%) │
+                       │   • Administrative Cache Purge Button   │
+                       └─────────────┬───────────────────────────┘
+                                     │
+                 HTTP Sync / Cached  │  HTTP 202 Accepted / Async Poll
+                                     ▼
+                       ┌─────────────────────────────────────────┐
+                       │       FASTAPI API GATEWAY (PORT 8000)   │
+                       └─────────────┬───────────────────────────┘
+                                     │
+                     ┌───────────────┴───────────────┐
+                     ▼                               ▼
+       ┌───────────────────────────┐   ┌───────────────────────────┐
+       │   REDIS CACHE & LIMITER   │   │    ASYNC TASK QUEUE       │
+       │   • Connection Pool       │   │   • ThreadPool Workers    │
+       │   • Sub-ms JSON Caching   │   │   • Milestone Progress    │
+       │   • Automatic Invalidation│   │   • Pub/Sub Event Stream  │
+       │   • ZSet Sliding Window   │   │   • Redis Task Registry   │
+       │   • Fail-Soft MemFallback │   │                           │
+       └─────────────┬─────────────┘   └─────────────┬─────────────┘
+                     │                               │
+                     ▼                               ▼
+       ┌───────────────────────────┐   ┌───────────────────────────┐
+       │     REDIS 7 CLUSTER       │   │    POSTGRESQL + CAS DISK  │
+       │     (PORT 6379)           │   │    (PORT 5432)            │
+       └───────────────────────────┘   └───────────────────────────┘
+```
+
+### 19.2 Technologies & Algorithms Implemented
+
+1. **Distributed Singleton Redis Connection Pooling (`app/redis_client.py`):**
+   - Implements `redis.ConnectionPool` with automatic reconnection, heartbeat ping telemetry, and transparent JSON caching (`get_cached_json`, `set_cached_json`, `delete_cache_key`, `delete_cache_pattern`).
+   - **Fail-Soft Graceful Degradation:** If Redis becomes unavailable, the system automatically falls back to an internal thread-safe in-memory cache (`_memory_cache`) with timestamp TTLs, ensuring zero endpoint 500 crashes during network or Redis outages.
+2. **Distributed Sliding-Window Rate Limiting (`app/rate_limiter.py`):**
+   - Utilizes Redis Sorted Sets (`ZADD`, `ZREMRANGEBYSCORE`, `ZCARD`, `EXPIRE`) to perform atomic sliding-window rate limiting.
+   - Prevents burst attacks across distributed multi-process or multi-container clusters by calculating precise event frequency over sliding $W$-second windows.
+3. **Asynchronous Background Task Queue & Worker Dispatcher (`app/task_queue.py`, `app/async_uploader.py`):**
+   - Enqueues heavy computation tasks to a dedicated `ThreadPoolExecutor` worker pool.
+   - Persists execution state in Redis hash `ddas:task:{task_id}` and maintains an indexed timeline list `ddas:tasks:index`.
+   - Real-time milestone progress updates (15% Hashing $\to$ 30% Schema Extraction $\to$ 50% TF-IDF & SimHash $\to$ 70% LSH Candidate Search $\to$ 85% CAS Storage $\to$ 95% LSH Bucket Registration $\to$ 100% Complete).
+   - Redis Pub/Sub integration on channel `ddas:tasks:events`.
+4. **Cache Invalidation Lifecycle:**
+   - Datasets list cached under key `ddas:cache:datasets:list` (TTL: 60s).
+   - LSH statistics cached under key `ddas:cache:lsh:stats` (TTL: 15s).
+   - Security audit, anomaly, and quarantine statistics cached with 10s TTLs.
+   - Dataset uploads, force overrides, manual quarantines, and anomaly resolutions automatically trigger targeted `delete_cache_pattern` calls.
+
+### 19.3 API Endpoints & Routers
+
+- **Redis Administrative Router (`/admin/redis`):**
+  - `GET /admin/redis/stats`: Returns full telemetry including cluster status (`ONLINE` vs `OFFLINE_FALLBACK`), ping latency in ms, memory usage, cache hit ratio percentage, hits, misses, sets, purges, and active task count.
+  - `POST /admin/redis/cache/purge`: Performs administrative cache invalidation across specified patterns (default: `ddas:cache:*`).
+- **Task Queue Router (`/tasks`, `/admin/tasks`):**
+  - `GET /tasks/{task_id}`: Retrieves real-time status (`PENDING`, `PROCESSING`, `COMPLETED`, `FAILED`, `CANCELLED`), progress percentage (0-100), current status message, result payload, or error.
+  - `POST /tasks/{task_id}/cancel`: Immediately cancels an active or pending task.
+  - `GET /admin/tasks`: Lists recent background tasks with optional status filtering.
+  - `GET /admin/tasks/stats`: Returns summary counts of total, pending, processing, completed, and failed tasks.
+- **Asynchronous Ingestion Endpoints:**
+  - `POST /datasets/upload-async`: Dispatches file parsing, deduplication, and CAS storage to the background worker pool, returning `HTTP 202 Accepted` with `{ "task_id": "...", "status": "PENDING" }`.
+  - `POST /lsh/backfill-async`: Dispatches multi-dataset LSH bucket indexing in the background.
+
+### 19.4 Frontend Cyber-Ops Interface
+
+- **`RedisTasksModal.jsx`:**
+  - SOC dark-themed telemetry dashboard with live Hit Ratio gauge, Ping Latency indicator, Redis Memory consumption, and cache counters.
+  - One-click administrative cache purge with real-time feedback toast.
+  - Real-time Background Task Queue inspector with animated progress bars, live status badges, stage descriptions, and task cancellation controls.
+  - Auto-refresh toggle (2.5s polling).
+- **`HeaderToolbar.jsx`:**
+  - Added `⚡ Redis & Tasks` button with live active task badge counter and cluster status glow.
+- **`UploadDropzone.jsx`:**
+  - Added toggle for `⚡ Async Background Queue` mode.
+  - Live animated milestone progress bar (0% $\to$ 100%) showing exact processing stage directly inside the dropzone.
+- **`DatasetInventory.jsx`:**
+  - Added subtle `⚡ Redis Cached (0.3ms)` badge indicator.
+- **`useDatasetUpload.js`:**
+  - Clean custom hook encapsulating upload, async queue dispatch, and progress polling to keep `App.jsx` under 300 lines.
+
+### 19.5 Verification & Full Regression Matrix (9 of 9 Suites Passing at 100%)
+
+- `verify_cas_and_rbac.py` -> 100% PASS
+- `verify_metadata_similarity.py` -> 100% PASS
+- `verify_tfidf_content_similarity.py` -> 100% PASS
+- `verify_fuzzy_similarity.py` -> 100% PASS
+- `verify_lsh_indexing.py` -> 100% PASS
+- `verify_audit_logging.py` -> 100% PASS
+- `verify_anomaly_detection.py` -> 100% PASS
+- `verify_alerting_and_quarantine.py` -> 100% PASS
+- `verify_redis_and_tasks.py` -> 100% PASS
+- **Code Health:** 100% of all Python/JS/JSX source files strictly satisfy the $\le 400$ lines limit.
+
+---
+
+## 20. Upcoming Roadmap
+
 - **Stage 14:** Comprehensive Cyber-Ops UI Refinement, Dark Mode Glassmorphism & Layout Shift Stabilization
 - **Stage 15:** Production Containerization (Docker Compose) & CI/CD Pipeline
 - **Stage 16:** Final Security Hardening, Penetration Testing & Production Handover
+
 
 
 

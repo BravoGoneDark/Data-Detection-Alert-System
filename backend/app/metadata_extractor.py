@@ -46,8 +46,8 @@ def extract_metadata(filename: str, file_bytes: bytes) -> ExtractedMetadata:
                 header_row = next(reader, None)
 
                 if header_row:
-                    # Clean and normalize header columns
-                    columns = [col.strip().lower() for col in header_row if col.strip()]
+                    # Clean and normalize header columns, stripping NUL characters
+                    columns = [col.replace("\x00", "").strip().lower() for col in header_row if col.replace("\x00", "").strip()]
                     # Count total remaining rows safely
                     row_count = sum(1 for row in reader if any(field.strip() for field in row))
                     col_count = len(columns)
@@ -77,7 +77,7 @@ def extract_metadata(filename: str, file_bytes: bytes) -> ExtractedMetadata:
             data = json.loads(file_bytes.decode("utf-8", errors="replace"))
             if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
                 # Array of records
-                columns = sorted(list({k.strip().lower() for record in data if isinstance(record, dict) for k in record.keys()}))
+                columns = sorted(list({k.replace("\x00", "").strip().lower() for record in data if isinstance(record, dict) for k in record.keys() if k.replace("\x00", "").strip()}))
                 return ExtractedMetadata(
                     columns=columns,
                     row_count=len(data),
@@ -86,7 +86,7 @@ def extract_metadata(filename: str, file_bytes: bytes) -> ExtractedMetadata:
                 )
             elif isinstance(data, dict):
                 # Key-value dictionary
-                columns = sorted([k.strip().lower() for k in data.keys()])
+                columns = sorted([k.replace("\x00", "").strip().lower() for k in data.keys() if k.replace("\x00", "").strip()])
                 return ExtractedMetadata(
                     columns=columns,
                     row_count=1,

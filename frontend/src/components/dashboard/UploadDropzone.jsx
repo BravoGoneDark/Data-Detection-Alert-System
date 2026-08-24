@@ -13,6 +13,9 @@ export default function UploadDropzone({
   setResult,
   onUpload,
   onDownload,
+  isAsyncMode = false,
+  setIsAsyncMode,
+  asyncTask = null,
 }) {
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
@@ -27,7 +30,7 @@ export default function UploadDropzone({
       <div className="bg-slate-900/90 rounded-2xl p-6 shadow-xl border border-slate-800/80 backdrop-blur-md">
         <h2 className="text-lg font-semibold text-white mb-1">Dataset Registration</h2>
         <p className="text-xs text-slate-400 mb-5">
-          Files are deduplicated via Content-Addressable Storage (SHA-256).
+          Files are deduplicated via Content-Addressable Storage (SHA-256) & LSH.
         </p>
 
         <div className="space-y-4">
@@ -74,6 +77,42 @@ export default function UploadDropzone({
             />
           </div>
 
+          {/* Stage 13: Async Background Queue Toggle */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-amber-400 font-bold text-sm">⚡</span>
+              <div>
+                <div className="text-xs font-semibold text-slate-200">Async Background Queue</div>
+                <div className="text-[10px] text-slate-400">Offload feature extraction to Redis worker</div>
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={isAsyncMode}
+              onChange={(e) => setIsAsyncMode && setIsAsyncMode(e.target.checked)}
+              className="h-4 w-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900 cursor-pointer"
+            />
+          </div>
+
+          {/* Live Async Task Progress Bar */}
+          {asyncTask && (
+            <div className="p-3.5 rounded-xl bg-amber-950/30 border border-amber-500/40 space-y-2 animate-fade-in">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-amber-300">
+                  {asyncTask.status === 'COMPLETED' ? '✓ Processing Complete' : '⚙️ Worker Processing...'}
+                </span>
+                <span className="font-mono text-amber-400 font-bold">{asyncTask.progress || 0}%</span>
+              </div>
+              <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                <div
+                  className="bg-amber-400 h-full rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(245,158,11,0.6)]"
+                  style={{ width: `${asyncTask.progress || 0}%` }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-300 font-mono truncate">{asyncTask.message}</p>
+            </div>
+          )}
+
           <button
             onClick={() => onUpload(false)}
             disabled={!file || loading}
@@ -81,7 +120,7 @@ export default function UploadDropzone({
                        disabled:cursor-not-allowed text-white text-sm font-medium
                        py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(0,194,222,0.2)]"
           >
-            {loading ? 'Processing & Analyzing Text...' : 'Upload & Analyze'}
+            {loading ? 'Processing & Analyzing Text...' : isAsyncMode ? '⚡ Queue in Background' : 'Upload & Analyze'}
           </button>
         </div>
       </div>

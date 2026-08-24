@@ -77,8 +77,14 @@ async def get_anomaly_statistics(
     current_user: User = Depends(require_permission("dataset:view")),
 ):
     """
-    Returns real-time behavioral anomaly posture, active threat volume, and user risk scores.
+    Returns real-time behavioral anomaly posture, active threat volume, and user risk scores with Redis caching.
     """
+    from app.redis_client import get_cached_json, set_cached_json
+    cache_key = "ddas:cache:anomalies:stats"
+    cached = get_cached_json(cache_key)
+    if cached is not None:
+        return AnomalyStatsResponse(**cached)
+
     total = db.query(AnomalyEvent).count()
     active_threats = (
         db.query(AnomalyEvent)
@@ -126,14 +132,16 @@ async def get_anomaly_statistics(
         reverse=True,
     )[:5]
 
-    return AnomalyStatsResponse(
-        total_anomalies=total,
-        active_threats=active_threats,
-        severity_breakdown=sev_counts,
-        anomaly_type_breakdown=type_counts,
-        status_breakdown=status_counts,
-        highest_risk_users=sorted_risks,
-    )
+    stats_dict = {
+        "total_anomalies": total,
+        "active_threats": active_threats,
+        "severity_breakdown": sev_counts,
+        "anomaly_type_breakdown": type_counts,
+        "status_breakdown": status_counts,
+        "highest_risk_users": sorted_risks,
+    }
+    set_cached_json(cache_key, stats_dict, ttl_seconds=10)
+    return AnomalyStatsResponse(**stats_dict)
 
 
 @router.post("/{anomaly_id}/resolve")
@@ -147,6 +155,7 @@ async def resolve_anomaly_event(
     """
     Updates anomaly status (e.g. INVESTIGATING, RESOLVED, FALSE_POSITIVE) with audit trail.
     """
+    from app.redis_client import delete_cache_key
     anomaly = db.query(AnomalyEvent).filter(AnomalyEvent.id == anomaly_id).first()
     if not anomaly:
         raise HTTPException(status_code=404, detail="Anomaly event not found")
@@ -155,6 +164,8 @@ async def resolve_anomaly_event(
     anomaly.status = payload.status.upper()
     db.commit()
     db.refresh(anomaly)
+
+    delete_cache_key("ddas:cache:anomalies:stats")
 
     # Log status transition in security audit ledger
     record_audit_event(
