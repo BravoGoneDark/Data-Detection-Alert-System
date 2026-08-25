@@ -19,15 +19,27 @@ def is_user_quarantined(
     """
     Checks if a user is currently subject to active policy quarantine containment.
     """
-    query = db.query(QuarantineRecord).filter(QuarantineRecord.status == "ACTIVE")
-    if user_id:
-        record = query.filter(QuarantineRecord.user_id == user_id).first()
-        if record:
-            return True, record
-    if username:
-        record = query.filter(QuarantineRecord.username == username).first()
-        if record:
-            return True, record
+    from sqlalchemy import or_, func
+    conditions = []
+    if user_id is not None:
+        conditions.append(QuarantineRecord.user_id == user_id)
+    if username is not None and str(username).strip():
+        clean_user = str(username).strip()
+        conditions.append(func.lower(QuarantineRecord.username) == func.lower(clean_user))
+
+    if not conditions:
+        return False, None
+
+    record = (
+        db.query(QuarantineRecord)
+        .filter(
+            QuarantineRecord.status == "ACTIVE",
+            or_(*conditions),
+        )
+        .first()
+    )
+    if record:
+        return True, record
     return False, None
 
 
