@@ -68,9 +68,9 @@ export function useSecurityFeeds(token) {
     }
   };
 
-  const fetchAuditLogs = async () => {
+  const fetchAuditLogs = async (silent = false) => {
     if (!token) return;
-    setLoadingAudit(true);
+    if (!silent) setLoadingAudit(true);
     try {
       const params = new URLSearchParams();
       if (auditSeverity) params.append('severity', auditSeverity);
@@ -99,13 +99,13 @@ export function useSecurityFeeds(token) {
     } catch (err) {
       console.error('Failed to fetch audit logs:', err);
     } finally {
-      setLoadingAudit(false);
+      if (!silent) setLoadingAudit(false);
     }
   };
 
-  const fetchAnomalies = async () => {
+  const fetchAnomalies = async (silent = false) => {
     if (!token) return;
-    setLoadingAnomalies(true);
+    if (!silent) setLoadingAnomalies(true);
     try {
       const params = new URLSearchParams();
       if (anomalySeverity) params.append('severity', anomalySeverity);
@@ -135,7 +135,7 @@ export function useSecurityFeeds(token) {
     } catch (err) {
       console.error('Failed to fetch anomalies:', err);
     } finally {
-      setLoadingAnomalies(false);
+      if (!silent) setLoadingAnomalies(false);
     }
   };
 

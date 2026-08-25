@@ -87,14 +87,15 @@ function UploadPanel() {
       qFeeds.fetchMyQuarantineStatus();
       qFeeds.fetchQuarantines();
 
-      // Periodic 3.5s background synchronization
+      // Periodic 3.5s background synchronization (silent to prevent UI flicker)
       const timer = setInterval(() => {
         qFeeds.fetchMyQuarantineStatus();
-        feeds.fetchAnomalies();
+        feeds.fetchAnomalies(true);
+        if (showQuarantineModal) qFeeds.fetchQuarantines(true);
       }, 3500);
       return () => clearInterval(timer);
     }
-  }, [token]);
+  }, [token, showQuarantineModal]);
 
   // Clear quarantine alert message once quarantine is lifted
   useEffect(() => {

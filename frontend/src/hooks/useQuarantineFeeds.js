@@ -33,9 +33,9 @@ export function useQuarantineFeeds(token) {
     }
   };
 
-  const fetchQuarantines = async () => {
+  const fetchQuarantines = async (silent = false) => {
     if (!token) return;
-    setLoadingQuarantine(true);
+    if (!silent) setLoadingQuarantine(true);
     try {
       const params = new URLSearchParams();
       if (quarantineStatusFilter) params.append('status', quarantineStatusFilter);
@@ -63,7 +63,7 @@ export function useQuarantineFeeds(token) {
     } catch (err) {
       console.error('Failed to fetch quarantine records:', err);
     } finally {
-      setLoadingQuarantine(false);
+      if (!silent) setLoadingQuarantine(false);
     }
   };
 
