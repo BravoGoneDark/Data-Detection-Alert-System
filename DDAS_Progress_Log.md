@@ -1,8 +1,8 @@
 # DDAS — Detailed Technical Progress Log
 
 **Project:** Secure Data Download Duplication & Anomaly Detection System (DDAS)
-**Date:** August 17–21, 2026
-**Covers:** Stage 1 (Core Duplicate Detection), Stage 2 (PostgreSQL Persistence), Stage 3 (Authentication — complete with animated auth UI), Stage 4 (RBAC), Stage 5 (CAS & Duplicate Refinement), Stage 6 (Metadata & Structural Similarity Matching), Stage 7 (TF-IDF & Cosine Similarity Content Matching), and Stage 8 (MinHash & SimHash Fuzzy Fingerprinting)
+**Date:** August 17–25, 2026
+**Covers:** Stages 1–15 (Core Deduplication, PostgreSQL Persistence, Authentication with Animated Portal, RBAC Permission Matrix, Content-Addressable Storage, Metadata Similarity, TF-IDF Cosine Matching, SimHash/MinHash Fuzzy Fingerprinting, Multi-Band LSH Indexing, SIEM Audit Ledger, Statistical Anomaly Detection, Automated Quarantine & Webhooks, Distributed Redis Caching & Async Task Queue, Cyber-Ops UI & Layout Stabilization, Production Containerization & CI/CD) and Stage 16 (Exhaustive E2E System Verification).
 
 ---
 
@@ -1454,46 +1454,152 @@ To support enterprise-grade security, scalability, and 24/7 global accessibility
 
 ---
 
-## 21. Upcoming Master Roadmap
+## 21. Stage 14 — Cyber-Ops UI Refinement, Dark Mode Glassmorphism & Layout Stabilization (Complete)
 
-### Stage 14: Cyber-Ops UI Refinement, Dark Mode Glassmorphism & Layout Shift Stabilization
-- **Deep Cyber-Ops Aesthetics:** Modern high-contrast dark theme with glassmorphism cards (`backdrop-blur-xl`), cyan/amber/fuchsia gradients, micro-glow borders, and futuristic typography.
-- **Telemetry & Threat Indicators:** Pulsing live status rings, real-time security radar widgets, and animated anomaly severity meters.
-- **Zero Layout Shift & Animation Polish:** Fluid skeleton loaders, spring transitions, and interactive modal dialogs for Quarantine, Audit Logs, and Webhooks.
-- **Responsive Layout:** Optimized multi-device grid for desktop, tablet, and mobile displays.
+**Date:** August 24–25, 2026  
+**Status:** Complete & Fully Verified (100% line limit compliance across all frontend components).
 
-### Stage 16: Exhaustive End-to-End System Verification & Interactive UI Testing Suite
-A comprehensive, full-system verification protocol testing every single interactive element, security policy, and algorithm under real-world multi-user conditions:
+### 21.1 Architectural Overview & Design System
 
-1. **Multi-Role Concurrency & RBAC Matrix:**
-   - Open simultaneous parallel browser sessions across all 5 user roles: **Admin**, **Faculty**, **Researcher**, **Student**, and **Guest**.
-   - Verify strict clearance-based dataset visibility (e.g., Student cannot view or download RESTRICTED/CONFIDENTIAL datasets).
-   - Test permission boundaries: verify non-admin users cannot access the Audit Log modal, Quarantine Management, or Webhook configuration.
+Stage 14 establishes a cohesive, state-of-the-art **Cyber-Ops Security Operations Center (SOC)** visual aesthetic across the entire DDAS platform. It eliminates visual dissonance, stabilizes layout shifts, and delivers rich forensic telemetry with fluid micro-interactions.
 
-2. **Multi-Format Corpus Deduplication & Plagiarism Suite:**
-   - Ingest and verify deduplication across diverse file formats:
-     - **CSV / TSV:** Verify column schema extraction, row/column counts, and structural Jaccard matching.
-     - **JSON:** Verify key normalization and record schema matching.
-     - **DOCX:** Verify real XML text extraction, SimHash distance computation, and keyword extraction without ZIP header interference.
-     - **TXT / Markdown:** Verify raw text tokenization, TF-IDF cosine comparison, and shared keyword intersections.
-   - Test exact match (100% SHA-256 collision), near-duplicate fuzzy match (Hamming distance $\le 4$ bits), and plagiarism text overlap ($\ge 60\%$).
-   - Test "Proceed Anyway / Register as Variant" workflow and verify variant lineage in the inventory.
+```
+                                  STAGE 14 UI ARCHITECTURE
+                                  
+                       ┌─────────────────────────────────────────┐
+                       │          ROOT APPLICATION SHELL         │
+                       │     <AuthProvider> → <AuthPage>         │
+                       └────────────────────┬────────────────────┘
+                                            │ Authenticated
+                                            ▼
+                       ┌─────────────────────────────────────────┐
+                       │              <UploadPanel>              │
+                       │   • Global Error & Notification Banners │
+                       │   • 3.5s Background Sync Polling Loop   │
+                       └────────────────────┬────────────────────┘
+                                            │
+         ┌──────────────────────────────────┼──────────────────────────────────┐
+         ▼                                  ▼                                  ▼
+┌──────────────────┐               ┌──────────────────┐               ┌──────────────────┐
+│ <HeaderToolbar>  │               │<QuarantineBanner>│               │<LshTelemetryBar> │
+│ • Pulsing Status │               │ • Glowing Red/Amb│               │ • Total Pairs    │
+│ • 6 Modal Buttons│               │ • Lockdown Notice│               │ • Backfill Button│
+└──────────────────┘               └──────────────────┘               └──────────────────┘
+         │
+         ├──────────────────────────────────┐
+         ▼                                  ▼
+┌─────────────────────────────────┐ ┌─────────────────────────────────┐
+│     <UploadDropzone> (4 cols)   │ │    <DatasetInventory> (8 cols)  │
+│ • Classification Clearance Drop │ │ • Multi-Field Instant Search    │
+│ • Async Background Mode Toggle  │ │ • 4-Field Multi-Column Sort     │
+│ • Live Milestone Bar (0-100%)   │ │ • Dynamic Pagination (6/12/24)  │
+│ • 4-Tier Forensic Duplicate Card│ │ • Clearance Badges (4 Tiers)    │
+│ • LSH O(1) Accelerated Badge    │ │ • Quarantine-Locked Downloads   │
+│ • SimHash / TF-IDF Intersect    │ │ • Sub-ms Redis Cache Active Tag │
+└─────────────────────────────────┘ └─────────────────────────────────┘
+         │
+         ▼
+┌────────────────────────────────────────────────────────────────────────────────┐
+│                          INTERACTIVE SOC MODAL SUITE                           │
+│  • <RedisTasksModal>    • <AnomalyDefenseModal>    • <AuditLedgerModal>        │
+│  • <QuarantineModal>    • <WebhookConfigModal>     • <LshArchitectureModal>    │
+└────────────────────────────────────────────────────────────────────────────────┘
+```
 
-3. **Interactive UI Button & Control Matrix:**
-   - Test every UI control on the dashboard:
-     - **Search Bar:** Real-time multi-field query matching (filename, uploader, classification, keywords, columns).
-     - **Sort Controls:** Date, Size, Name, and Download count in both Ascending and Descending order.
-     - **Pagination:** Page sizing (6, 12, 24 per page) and previous/next page navigation.
-     - **Download Action:** Byte-for-byte CAS file download and live download counter increment.
-     - **Async Background Queue:** Toggle async mode, observe live progress bar ($0\% \to 100\%$), test task cancellation, and verify background worker task completion.
-     - **Audit Log Modal:** Filter by event type, user, severity, and date range; verify real-time audit log streaming.
-     - **Quarantine Modal:** Trigger an automated quarantine lockdown, verify security denial on download attempts, and execute administrative release.
-     - **Webhook Management:** Add, test, toggle, and delete external alert webhook endpoints.
+#### Design System & Aesthetic Tokens
+- **Base Environment:** `#05070d` obsidian background with dark color-scheme tokenization (`frontend/src/index.css`).
+- **Typography:** Modern Google Fonts pairing: **Plus Jakarta Sans** for clear structural typography and **JetBrains Mono** for cryptographic hashes, metrics, and JSON payloads.
+- **Glassmorphism:** Custom `.cyber-glass` and `.cyber-glass-card` classes with 16px–20px backdrop blurs (`backdrop-filter: blur(20px)`), subtle radial gradients, and cyan border highlights (`rgba(0, 194, 222, 0.15)`).
+- **Harmonious Security Color Palette:**
+  - `PUBLIC`: Emerald (`#10b981`)
+  - `INTERNAL`: Cyan (`#00c2de`)
+  - `RESTRICTED`: Amber / Gold (`#f59e0b`)
+  - `CONFIDENTIAL`: Purple / Violet (`#a855f7`)
+  - `THREAT / LOCKDOWN`: Rose / Crimson (`#f43f5e`)
 
-4. **Anomaly & Attack Simulation:**
-   - Simulate rapid download bursts to trigger the statistical Z-Score anomaly detector.
-   - Simulate clearance escalation attempts to verify automated quarantine lockouts and webhook alert dispatch.
-   - Verify Redis cache purge and LSH re-indexing buttons.
+### 21.2 Component Hierarchy & Separation of Concerns
+
+`frontend/src/App.jsx` is strictly decoupled (< 280 lines) through modular component composition:
+
+1. **`UploadPanel`:** Top-level dashboard orchestrator managing modal visibility states, data feeds, and periodic 3.5s background synchronization.
+2. **`HeaderToolbar.jsx`:** Top navigation bar featuring live threat counters, active quarantine badges, active async task badges, and trigger buttons for all 6 SOC modals.
+3. **`QuarantineBanner.jsx`:** Animated glowing containment banner that mounts automatically when the logged-in user account is isolated.
+4. **`LshTelemetryWidget.jsx`:** Real-time LSH indexing metrics bar displaying bucket counts, candidate pairs, and one-click database re-indexing.
+5. **`UploadDropzone.jsx`:** Ingestion workstation supporting both synchronous and asynchronous queue dispatch with real-time milestone progress feedback.
+6. **`DatasetInventory.jsx`:** High-density dataset inventory featuring instant filtering, column sorting, pagination, and CAS streaming downloads.
+
+### 21.3 Custom Hooks Architecture
+
+State management and network operations are cleanly encapsulated in dedicated custom hooks:
+- **`useDatasetUpload.js`:** Manages file selection, classification level, description, synchronous upload, asynchronous task queue polling, and CAS blob downloading.
+- **`useSecurityFeeds.js`:** Manages real-time data feeds for LSH statistics, SIEM audit ledger logs, and statistical anomaly detection records.
+- **`useQuarantineFeeds.js`:** Manages policy quarantine records, current user containment status, and outbound webhook configurations.
+
+### 21.4 Multi-Tier Forensic Duplicate & Similarity Card
+
+When incoming datasets match an existing entry in the system, `UploadDropzone.jsx` dynamically renders a prioritized forensic analysis card:
+
+1. **Exact Duplicate (`EXACT`):**
+   - Amber theme with `100% HASH MATCH` badge.
+   - Shows byte-for-byte SHA-256 collision with existing dataset ID, uploader, and timestamp.
+2. **Structural & Schema Overlap (`METADATA_SIMILAR`):**
+   - Cyan theme with `% SIMILAR` badge.
+   - Interactive progress bars breaking down: *Filename Match*, *Schema & Column Overlap*, *File Size Proximity*, and *Row Count Alignment*.
+   - Extracted column chips with checkmarks (`col ✓`) and incoming raw text preview.
+3. **Content & Plagiarism Match (`CONTENT_SIMILAR`):**
+   - Fuchsia/Purple theme with `% COSINE MATCH` badge.
+   - Shared salient TF-IDF vocabulary chips (`#keyword`).
+4. **Fuzzy SimHash Shingle Match (`FUZZY_SIMILAR`):**
+   - Rose theme with `N BITS FLIPPED` badge.
+   - 64-bit SimHash hex fingerprint comparison and bit-alignment progress meter.
+5. **Dual Resolution Actions:**
+   - `⬇ Use Existing Dataset (Download)`: Instant CAS download of the matching file.
+   - `⚡ Proceed Anyway (Register as Variant)`: Force-registers the incoming file as an authorized derivative variant in the inventory.
+
+### 21.5 Interactive Dataset Inventory Engine
+
+`DatasetInventory.jsx` provides an enterprise data table experience:
+- **Multi-Field Instant Search:** Real-time client-side query matching across filename, uploader username, classification tier, extracted column names, and TF-IDF keywords.
+- **Multi-Column Sort:** Interactive sorting by *Date*, *Size*, *Filename*, and *Download Count* with toggling ascending/descending indicators.
+- **Dynamic Pagination:** Page size selector (6, 12, 24 per page), numbered page jump buttons, and previous/next navigation.
+- **Live Security State:** Download buttons automatically lock to `🔒 Restricted` in disabled red state when an account is placed under policy quarantine.
+
+### 21.6 Code Health & Line Limit Compliance
+
+Every source file in the frontend strictly complies with the $\le 400$ lines limit:
+- `frontend/src/App.jsx` — 271 lines
+- `frontend/src/components/dashboard/UploadDropzone.jsx` — 394 lines
+- `frontend/src/components/dashboard/DatasetInventory.jsx` — 302 lines
+- `frontend/src/components/modals/RedisTasksModal.jsx` — 378 lines
+- `frontend/src/components/modals/QuarantineModal.jsx` — 364 lines
+- `frontend/src/components/modals/AnomalyDefenseModal.jsx` — 346 lines
+- `frontend/src/components/modals/AuditLedgerModal.jsx` — 262 lines
+- `frontend/src/components/modals/WebhookConfigModal.jsx` — 296 lines
+- `frontend/src/hooks/useDatasetUpload.js` — 192 lines
+
+---
+
+## 22. Stage 16 — Exhaustive End-to-End System Verification & Interactive UI Testing Suite (In Progress)
+
+**Date:** August 25, 2026  
+**Status:** In Progress — Testing Deployed Cloud Application (Vercel Frontend + Render FastAPI Backend + Render PostgreSQL 16 + Render Redis 7).
+
+### 22.1 Master Verification Protocol Matrix
+
+| Module | Verification Domain | Test Coverage | Status |
+|---|---|---|---|
+| **Module 1** | **Authentication & RBAC Identity Matrix** | Unlock Animation, User Signup (`STUDENT`), Email/Username Collision Validation, Multi-Identifier Login, Clearance Filtering | **100% PASS** |
+| **Module 2** | **Multi-Tier Deduplication Engine** | First Unique Ingestion (Direct Inventory Entry), Tier 1 SHA-256 CAS Interception, Tier 2 Structural Schema Overlap (Jaccard), Tier 3 Content Similarity (TF-IDF), Tier 4 Fuzzy SimHash, Variant Lineage | **IN PROGRESS** |
+| **Module 3** | **Distributed Redis Caching & Async Task Queue** | Sub-ms Read Caching (`⚡ Redis Cached` badge), Admin Cache Purge, Async Background Queue Toggle, Milestone Progress Bar ($0\% \to 100\%$) | **PENDING** |
+| **Module 4** | **Anomaly Detection Watchdog** | Security Watchdog Telemetry, $Z$-Score Spike Detection, Sliding Velocity Bursts, Threat Analyst Resolution Workflow | **PENDING** |
+| **Module 5** | **Policy Quarantine & SOC Webhook Engine** | Containment Lockdown Banner, Download Blocking (HTTP 403), Outbound Webhooks with HMAC-SHA256 Signatures, Admin Clearance Release | **PENDING** |
+| **Module 6** | **SIEM Forensic Audit Ledger & Dashboard Matrix** | Multi-Filter Audit Logs (Severity, Event, User), Instant Search, Multi-Column Sort, Pagination (6/12/24), CAS Byte Streaming Download | **PENDING** |
+
+### 22.2 Verified Results to Date
+
+1. **Module 1 (Auth & RBAC Identity):** Verified 100% working on live deployed environment. User registration correctly defaults to `STUDENT` role with `INTERNAL`/`PUBLIC` clearance; collision handling prevents duplicate accounts; multi-identifier login resolves both username and email.
+2. **Module 2.1 (Unique Ingestion Baseline):** Confirmed unique file ingestion directly transitions into the Dataset Inventory table/grid with extracted schema, without showing duplicate interception cards.
+3. **Module 2.3 (Structural Similarity Interception):** Confirmed live detection of 84.8% schema similarity when uploading `network_traffic_v2.csv` against `network_traffic_v1.csv`, successfully rendering the LSH-accelerated breakdown card and variant registration actions.
 
 
 

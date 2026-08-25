@@ -15,29 +15,32 @@ from dotenv import load_dotenv
 load_dotenv()
 
 logger = logging.getLogger("ddas.redis")
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 # Global in-memory fallback cache (used when Redis is unavailable)
 _memory_cache: Dict[str, Dict[str, Any]] = {}
 _cache_stats = {"hits": 0, "misses": 0, "sets": 0, "purges": 0}
 
-# Connection pool singleton
+# Connection pool singleton and cached URL
 _pool: Optional[redis.ConnectionPool] = None
+_cached_redis_url: Optional[str] = None
 
 
-def get_redis_pool() -> redis.ConnectionPool:
-    global _pool
-    if _pool is None:
+def get_redis_pool() -> Optional[redis.ConnectionPool]:
+    global _pool, _cached_redis_url
+    current_url = os.getenv("REDIS_URL", "redis://localhost:6379/0").strip()
+    if _pool is None or _cached_redis_url != current_url:
+        _cached_redis_url = current_url
         try:
             _pool = redis.ConnectionPool.from_url(
-                REDIS_URL,
+                current_url,
                 max_connections=20,
                 decode_responses=True,
-                socket_timeout=2.0,
-                socket_connect_timeout=2.0,
+                socket_timeout=5.0,
+                socket_connect_timeout=5.0,
             )
         except Exception as e:
-            logger.warning("Failed to initialize Redis pool: %s", e)
+            logger.warning("Failed to initialize Redis connection pool: %s", e)
+            _pool = None
     return _pool
 
 
@@ -50,7 +53,7 @@ def get_redis_client() -> Optional[redis.Redis]:
             client.ping()
             return client
     except Exception as e:
-        logger.debug("Redis unreachable, falling back to in-memory cache: %s", e)
+        logger.debug("Redis/Valkey unreachable (%s), using in-memory fallback: %s", _cached_redis_url, e)
     return None
 
 
@@ -164,26 +167,33 @@ def delete_cache_pattern(pattern: str) -> int:
 def get_redis_telemetry() -> Dict[str, Any]:
     """Generates real-time health and performance metrics for the SOC dashboard."""
     client = get_redis_client()
-    is_online = client is not None
+    is_online = False
     ping_ms = None
     info: Dict[str, Any] = {}
+    current_url = os.getenv("REDIS_URL", "redis://localhost:6379/0").strip()
 
     if client:
         try:
             t0 = time.time()
             client.ping()
             ping_ms = round((time.time() - t0) * 1000, 2)
-            info = client.info()
+            is_online = True
         except Exception as e:
-            logger.warning("Failed to query Redis info: %s", e)
+            logger.warning("Failed to ping Redis/Valkey: %s", e)
             is_online = False
+
+        if is_online:
+            try:
+                info = client.info()
+            except Exception as e:
+                logger.debug("Failed to query full info dict (non-fatal): %s", e)
 
     # Calculate hit ratio
     total_queries = _cache_stats["hits"] + _cache_stats["misses"]
     hit_ratio = round((_cache_stats["hits"] / total_queries * 100), 1) if total_queries > 0 else 0.0
 
     # Human-readable memory
-    memory_used_human = info.get("used_memory_human", "N/A")
+    memory_used_human = info.get("used_memory_human") or info.get("used_memory") or "N/A"
     uptime_days = info.get("uptime_in_days", 0)
     connected_clients = info.get("connected_clients", 0)
     total_keys = 0
@@ -201,9 +211,9 @@ def get_redis_telemetry() -> Dict[str, Any]:
 
     return {
         "status": "ONLINE" if is_online else "OFFLINE_FALLBACK",
-        "engine": "Redis 7 (Distributed)" if is_online else "Python In-Memory (Local Fallback)",
+        "engine": "Redis / Valkey (Distributed)" if is_online else "Python In-Memory (Local Fallback)",
         "ping_latency_ms": ping_ms,
-        "memory_used": memory_used_human,
+        "memory_used": str(memory_used_human),
         "total_keys": total_keys,
         "cache_hits": _cache_stats["hits"],
         "cache_misses": _cache_stats["misses"],
@@ -212,5 +222,5 @@ def get_redis_telemetry() -> Dict[str, Any]:
         "hit_ratio_percent": hit_ratio,
         "connected_clients": connected_clients,
         "uptime_days": uptime_days,
-        "redis_url": REDIS_URL.split("@")[-1] if "@" in REDIS_URL else REDIS_URL,
+        "redis_url": current_url.split("@")[-1] if "@" in current_url else current_url,
     }
