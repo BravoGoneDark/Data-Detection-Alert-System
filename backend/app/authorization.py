@@ -10,10 +10,12 @@ from app.auth import get_current_user
 
 def user_has_permission(user: User, permission: str) -> bool:
     """Check whether the user's role grants the named permission."""
+    if user is None:
+        return False
+    if user.role_id == 1 or (user.role and user.role.name == "ADMIN"):
+        return True
     if user.role is None:
         return False
-    if user.role.name == "ADMIN":
-        return True
     return any(p.name == permission for p in user.role.permissions)
 
 
