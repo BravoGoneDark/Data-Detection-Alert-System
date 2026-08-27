@@ -1589,17 +1589,36 @@ Every source file in the frontend strictly complies with the $\le 400$ lines lim
 | Module | Verification Domain | Test Coverage | Status |
 |---|---|---|---|
 | **Module 1** | **Authentication & RBAC Identity Matrix** | Unlock Animation, User Signup (`STUDENT`), Email/Username Collision Validation, Multi-Identifier Login, Clearance Filtering | **100% PASS** |
-| **Module 2** | **Multi-Tier Deduplication Engine** | First Unique Ingestion (Direct Inventory Entry), Tier 1 SHA-256 CAS Interception, Tier 2 Structural Schema Overlap (Jaccard), Tier 3 Content Similarity (TF-IDF), Tier 4 Fuzzy SimHash, Variant Lineage | **IN PROGRESS** |
-| **Module 3** | **Distributed Redis Caching & Async Task Queue** | Sub-ms Read Caching (`⚡ Redis Cached` badge), Admin Cache Purge, Async Background Queue Toggle, Milestone Progress Bar ($0\% \to 100\%$) | **PENDING** |
-| **Module 4** | **Anomaly Detection Watchdog** | Security Watchdog Telemetry, $Z$-Score Spike Detection, Sliding Velocity Bursts, Threat Analyst Resolution Workflow | **PENDING** |
-| **Module 5** | **Policy Quarantine & SOC Webhook Engine** | Containment Lockdown Banner, Download Blocking (HTTP 403), Outbound Webhooks with HMAC-SHA256 Signatures, Admin Clearance Release | **PENDING** |
-| **Module 6** | **SIEM Forensic Audit Ledger & Dashboard Matrix** | Multi-Filter Audit Logs (Severity, Event, User), Instant Search, Multi-Column Sort, Pagination (6/12/24), CAS Byte Streaming Download | **PENDING** |
+| **Module 2** | **Multi-Tier Deduplication Engine** | First Unique Ingestion, Tier 1 SHA-256 CAS Interception, Tier 2 Structural Overlap, Tier 3 Content Similarity, Tier 4 Fuzzy SimHash, Variant Lineage | **100% PASS** |
+| **Module 3** | **Distributed Redis Caching & Async Task Queue** | Sub-ms Read Caching, Valkey/Redis telemetry compatibility, In-Memory Fail-soft degradation, Async Background Queue ($0\% \to 100\%$) | **100% PASS** |
+| **Module 4** | **Anomaly Detection Watchdog** | Security Watchdog Telemetry, $Z$-Score Spike Detection, Sliding Velocity Bursts (6 downloads / 30s), Threat Analyst Resolution Workflow (`ACTIVE` $\to$ `INVESTIGATING` $\to$ `RESOLVED`) | **100% PASS** |
+| **Module 5** | **Policy Quarantine & SOC Webhook Engine** | Containment Lockdown Banner, Download Blocking (HTTP 403), Outbound Webhooks with HMAC-SHA256 Signatures, Admin Clearance Release | **100% PASS** |
+| **Module 6** | **SIEM Forensic Audit Ledger & Dashboard Matrix** | Multi-Filter Audit Logs (Severity, Event, User), Instant Search, Multi-Column Sort, Pagination (6/12/24), Self-Healing CAS Byte Streaming Download | **100% PASS** |
 
 ### 22.2 Verified Results to Date
 
 1. **Module 1 (Auth & RBAC Identity):** Verified 100% working on live deployed environment. User registration correctly defaults to `STUDENT` role with `INTERNAL`/`PUBLIC` clearance; collision handling prevents duplicate accounts; multi-identifier login resolves both username and email.
-2. **Module 2.1 (Unique Ingestion Baseline):** Confirmed unique file ingestion directly transitions into the Dataset Inventory table/grid with extracted schema, without showing duplicate interception cards.
-3. **Module 2.3 (Structural Similarity Interception):** Confirmed live detection of 84.8% schema similarity when uploading `network_traffic_v2.csv` against `network_traffic_v1.csv`, successfully rendering the LSH-accelerated breakdown card and variant registration actions.
+2. **Module 2 (Deduplication Engine):** Confirmed unique file ingestion directly transitions into the Dataset Inventory table/grid with extracted schema; confirmed live detection of 100% exact CAS hash match and 84.8% schema structural similarity with LSH candidate retrieval.
+3. **Module 3 (Redis Caching & Valkey Compatibility):** Hardened connection pool socket timeout to 5.0s, separated `ping()` from `info()` for Valkey compatibility, and verified sub-millisecond read cache acceleration.
+4. **Module 4 (Watchdog & Quarantine):** Verified rapid download bursts ($\ge 6$ downloads in 30s) automatically trigger `BURST_EXFILTRATION` (Risk: 85.0) and `Z_SCORE_SPIKE` anomalies, enforcing immediate account containment and hard-locking downloads. Verified analyst resolution lifecycle and administrative clearance release.
+5. **Module 5 (Outbound Webhooks):** Verified HMAC-SHA256 signature calculation, `X-DDAS-Signature` header delivery, and multi-event filtering for SOC integration.
+6. **Module 6 (Audit Ledger & Self-Healing CAS):** Verified immutable audit logging across all operational events; implemented dynamic self-healing CAS byte restoration from PostgreSQL metadata to ensure file downloads persist seamlessly across ephemeral cloud container restarts.
+
+---
+
+## 23. Stage 17 — Dual-Persona UI Matrix & Member Role Administration Subsystem (Planned)
+
+**Status:** Planned Architecture Specification  
+
+### 23.1 Persona Distinction & Authorization Boundaries
+
+1. **Administrator Command Center (`ADMIN` Persona):**
+   - **Full Executive Control:** Access to all SOC telemetry, manual quarantine containment, administrative clearance release, watchdog incident investigation/resolution, outbound webhook channel registration, cache purges, and system re-indexing.
+   - **Member Management Panel:** Dedicated UI view to list all registered system users, inspect their assigned clearance and activity, and dynamically promote or demote roles (`ADMIN`, `FACULTY`, `RESEARCHER`, `STUDENT`, `GUEST`).
+
+2. **Public / Standard User View (`STUDENT`, `RESEARCHER`, `FACULTY`, `GUEST` Persona):**
+   - **Operational Focus:** Search, filter, upload, and download datasets according to classification level.
+   - **Read-Only / Protected Security Controls:** Non-admin users cannot register or delete webhooks, cannot manually quarantine other users, cannot release quarantined accounts, and cannot alter watchdog incident statuses. Administrative trigger buttons are either hidden or replaced with non-interactive status badges.
 
 
 
