@@ -235,12 +235,14 @@ function UploadPanel() {
           setUserFilter={qFeeds.setQuarantineUserFilter}
           onRefresh={qFeeds.fetchQuarantines}
           onRelease={async (id, notes) => {
-            await qFeeds.releaseQuarantine(id, notes);
+            const res = await qFeeds.releaseQuarantine(id, notes);
             await qFeeds.fetchMyQuarantineStatus();
+            return res;
           }}
           onManualQuarantine={async (targetUsername, reason, riskScore) => {
-            await qFeeds.manualQuarantine(targetUsername, reason, riskScore);
+            const res = await qFeeds.manualQuarantine(targetUsername, reason, riskScore);
             await qFeeds.fetchMyQuarantineStatus();
+            return res;
           }}
         />
 
