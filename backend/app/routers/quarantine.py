@@ -103,7 +103,7 @@ async def create_manual_quarantine(
     payload: ManualQuarantineRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("dataset:upload")),
+    current_user: User = Depends(require_permission("user:manage")),
 ):
     """Manually subjects a user account to administrative quarantine containment."""
     from app.redis_client import delete_cache_key
@@ -145,7 +145,7 @@ async def release_quarantine_record(
     payload: QuarantineReleaseRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("dataset:upload")),
+    current_user: User = Depends(require_permission("user:manage")),
 ):
     """Lifts security quarantine containment and restores account privileges."""
     from app.redis_client import delete_cache_key

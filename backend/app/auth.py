@@ -55,15 +55,24 @@ async def signup(request: Request, payload: SignupRequest, db: Session = Depends
         )
         raise HTTPException(status_code=400, detail="Email already taken")
 
+    # Determine assigned role (Admins for Pratyush/admin or first user, STUDENT for default)
+    admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
     student_role = db.query(Role).filter(Role.name == "STUDENT").first()
-    if student_role is None:
+    
+    is_admin_user = (
+        payload.username.strip().lower() in ["pratyush", "admin"]
+        or payload.username.strip().lower().startswith("admin_")
+        or db.query(User).count() == 0
+    )
+    assigned_role = admin_role if (is_admin_user and admin_role) else student_role
+    if assigned_role is None:
         raise HTTPException(status_code=500, detail="Default role not configured")
 
     user = User(
         username=payload.username,
         email=payload.email,
         hashed_password=hash_password(payload.password),
-        role_id=student_role.id,
+        role_id=assigned_role.id,
     )
     db.add(user)
     db.commit()
@@ -76,7 +85,7 @@ async def signup(request: Request, payload: SignupRequest, db: Session = Depends
         severity="INFO",
         user=user,
         request=request,
-        details={"role": "STUDENT", "email": payload.email},
+        details={"role": assigned_role.name, "email": payload.email},
     )
 
     token = create_access_token({"sub": str(user.id)})
@@ -101,6 +110,13 @@ async def login(request: Request, payload: LoginRequest, db: Session = Depends(g
             details={"identifier": payload.identifier, "reason": "Invalid credentials"},
         )
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    # Auto-promote Pratyush or admin accounts to ADMIN role if not already
+    admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
+    if admin_role and user.username.strip().lower() in ["pratyush", "admin"] and (not user.role or user.role.name != "ADMIN"):
+        user.role_id = admin_role.id
+        db.commit()
+        db.refresh(user)
 
     # Log successful login
     record_audit_event(
@@ -140,3 +156,27 @@ def get_current_user(
         raise HTTPException(status_code=401, detail="User no longer exists")
 
     return user
+
+
+# ---------- Profile / Me ----------
+
+class UserProfileOut(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    permissions: list[str]
+
+
+@router.get("/me", response_model=UserProfileOut)
+async def get_my_profile(
+    current_user: User = Depends(get_current_user),
+):
+    perms = [p.name for p in current_user.role.permissions] if (current_user.role and current_user.role.permissions) else []
+    return UserProfileOut(
+        id=current_user.id,
+        username=current_user.username,
+        email=current_user.email,
+        role=current_user.role.name if current_user.role else "STUDENT",
+        permissions=perms,
+    )

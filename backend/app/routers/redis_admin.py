@@ -46,7 +46,7 @@ class CachePurgeOut(BaseModel):
 
 @router.get("/stats", response_model=RedisStatsOut)
 def get_redis_cache_statistics(
-    current_user: User = Depends(require_permission("security:view")),
+    current_user: User = Depends(require_permission("dataset:view")),
 ):
     """
     Returns real-time telemetry on the Redis distributed caching cluster,
