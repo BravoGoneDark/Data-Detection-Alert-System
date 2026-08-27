@@ -12,6 +12,8 @@ def user_has_permission(user: User, permission: str) -> bool:
     """Check whether the user's role grants the named permission."""
     if user.role is None:
         return False
+    if user.role.name == "ADMIN":
+        return True
     return any(p.name == permission for p in user.role.permissions)
 
 
