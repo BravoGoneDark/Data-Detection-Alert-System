@@ -20,11 +20,12 @@ export default function QuarantineModal({
   const [manualUser, setManualUser] = useState('');
   const [manualReason, setManualReason] = useState('');
   const [manualRisk, setManualRisk] = useState('85.0');
-  const [actionError, setActionError] = useState(null);
+  const [manualError, setManualError] = useState(null);
 
   // Release note modal
   const [releasingRecord, setReleasingRecord] = useState(null);
   const [releaseNotes, setReleaseNotes] = useState('');
+  const [releaseError, setReleaseError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -33,15 +34,16 @@ export default function QuarantineModal({
     e.preventDefault();
     if (!manualUser.trim() || !manualReason.trim()) return;
     setActionLoading(true);
-    setActionError(null);
+    setManualError(null);
     const res = await onManualQuarantine(manualUser.trim(), manualReason.trim(), manualRisk);
     setActionLoading(false);
     if (res?.success) {
       setShowManualModal(false);
       setManualUser('');
       setManualReason('');
+      setManualError(null);
     } else {
-      setActionError(res?.error || 'Failed to quarantine user');
+      setManualError(res?.error || 'Failed to quarantine user');
     }
   };
 
@@ -49,14 +51,15 @@ export default function QuarantineModal({
     e.preventDefault();
     if (!releasingRecord) return;
     setActionLoading(true);
-    setActionError(null);
+    setReleaseError(null);
     const res = await onRelease(releasingRecord.id, releaseNotes.trim() || 'Cleared by admin');
     setActionLoading(false);
     if (res?.success) {
       setReleasingRecord(null);
       setReleaseNotes('');
+      setReleaseError(null);
     } else {
-      setActionError(res?.error || 'Failed to release quarantine');
+      setReleaseError(res?.error || 'Failed to release quarantine');
     }
   };
 
@@ -84,7 +87,11 @@ export default function QuarantineModal({
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              setManualError(null);
+              setReleaseError(null);
+              onClose();
+            }}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             ✕
@@ -114,7 +121,12 @@ export default function QuarantineModal({
           </div>
           <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-end">
             <button
-              onClick={() => setShowManualModal(true)}
+              onClick={() => {
+                setManualError(null);
+                setManualUser('');
+                setManualReason('');
+                setShowManualModal(true);
+              }}
               className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors shadow-[0_0_12px_rgba(244,63,94,0.4)] flex items-center justify-center gap-1.5"
             >
               <span>⚡</span> Manual Quarantine
@@ -218,9 +230,9 @@ export default function QuarantineModal({
                       {rec.status === 'ACTIVE' && (
                         <button
                           onClick={() => {
+                            setReleaseError(null);
                             setReleasingRecord(rec);
                             setReleaseNotes('');
-                            setActionError(null);
                           }}
                           className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs font-semibold transition-colors shadow-sm"
                         >
@@ -243,9 +255,9 @@ export default function QuarantineModal({
               <p className="text-xs text-slate-400 mb-4">
                 Immediately enforce isolation containment and block downloads for target account.
               </p>
-              {actionError && (
+              {manualError && (
                 <div className="mb-3 p-2.5 rounded bg-rose-950/80 border border-rose-700 text-xs text-rose-300">
-                  {actionError}
+                  {manualError}
                 </div>
               )}
               <form onSubmit={handleManualSubmit} className="space-y-3">
@@ -286,7 +298,10 @@ export default function QuarantineModal({
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setShowManualModal(false)}
+                    onClick={() => {
+                      setManualError(null);
+                      setShowManualModal(false);
+                    }}
                     className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
                   >
                     Cancel
@@ -312,9 +327,9 @@ export default function QuarantineModal({
               <p className="text-xs text-slate-400 mb-4">
                 Lifting quarantine for <span className="text-emerald-400 font-mono font-bold">{releasingRecord.username}</span> will restore download and system privileges.
               </p>
-              {actionError && (
+              {releaseError && (
                 <div className="mb-3 p-2.5 rounded bg-rose-950/80 border border-rose-700 text-xs text-rose-300">
-                  {actionError}
+                  {releaseError}
                 </div>
               )}
               <form onSubmit={handleReleaseSubmit} className="space-y-3">
@@ -332,7 +347,10 @@ export default function QuarantineModal({
                 <div className="flex justify-end gap-2 pt-2">
                   <button
                     type="button"
-                    onClick={() => setReleasingRecord(null)}
+                    onClick={() => {
+                      setReleaseError(null);
+                      setReleasingRecord(null);
+                    }}
                     className="px-3 py-1.5 rounded bg-slate-800 text-slate-300 text-xs hover:bg-slate-700"
                   >
                     Cancel
