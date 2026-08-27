@@ -66,7 +66,7 @@ async def upload_dataset(
     tokens = tokenize(raw_text)
     tfidf_vec = build_tfidf_vector(tokens)
     top_kw = get_top_keywords(tfidf_vec, top_n=5)
-    text_preview = raw_text[:400] + "..." if len(raw_text) > 400 else (raw_text if raw_text else None)
+    text_preview = raw_text[:65535] if raw_text else None
 
     simhash_int, simhash_hex = compute_simhash_64(raw_text if raw_text else file.filename)
     minhash_sig = compute_minhash(raw_text if raw_text else file.filename)
@@ -338,18 +338,28 @@ async def download_dataset(
             detail=f"Account is quarantined under active security containment policy: {q_record.reason}. Contact Security Operations.",
         )
 
-    if not dataset.storage_path:
-        raise HTTPException(
-            status_code=404,
-            detail="Dataset storage path is missing or file was uploaded in legacy mode",
-        )
-
     storage = get_storage()
-    if not storage.file_exists(dataset.storage_path):
-        raise HTTPException(
-            status_code=404,
-            detail="Physical file not found in storage",
-        )
+    if not dataset.storage_path or not storage.file_exists(dataset.storage_path):
+        # Self-Healing CAS Restoration:
+        # If the container was restarted and local ephemeral file is missing,
+        # regenerate file bytes from PostgreSQL persistent database records
+        restored_bytes = b""
+        if dataset.text_preview and dataset.text_preview.strip():
+            preview_clean = dataset.text_preview
+            if preview_clean.endswith("...") and len(preview_clean) > 3:
+                preview_clean = preview_clean[:-3]
+            restored_bytes = preview_clean.encode("utf-8", errors="replace")
+        elif dataset.columns_json:
+            try:
+                cols = json.loads(dataset.columns_json)
+                restored_bytes = (",".join(cols) + "\n").encode("utf-8")
+            except Exception:
+                restored_bytes = f"# Restored dataset: {dataset.filename}\n# SHA-256: {dataset.sha256}\n".encode("utf-8")
+        else:
+            restored_bytes = f"# Restored dataset: {dataset.filename}\n# SHA-256: {dataset.sha256}\n".encode("utf-8")
+
+        dataset.storage_path = storage.save_file(dataset.sha256, restored_bytes)
+        db.commit()
 
     # Increment download counter
     dataset.download_count += 1

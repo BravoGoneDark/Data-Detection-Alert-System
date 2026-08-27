@@ -67,7 +67,7 @@ def process_async_upload(
         tokens = tokenize(raw_text)
         tfidf_vec = build_tfidf_vector(tokens)
         top_kw = get_top_keywords(tfidf_vec, top_n=5)
-        text_preview = raw_text[:400] + "..." if len(raw_text) > 400 else (raw_text if raw_text else None)
+        text_preview = raw_text[:65535] if raw_text else None
 
         simhash_int, simhash_hex = compute_simhash_64(raw_text if raw_text else filename)
         minhash_sig = compute_minhash(raw_text if raw_text else filename)
