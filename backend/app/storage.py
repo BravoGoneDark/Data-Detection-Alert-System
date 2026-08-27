@@ -43,12 +43,16 @@ class LocalContentAddressableStorage(StorageProvider):
 
     def __init__(self, base_dir: str | None = None):
         if base_dir is None:
-            # Default to backend/storage/cas relative to this file's location
-            base_dir = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "storage",
-                "cas",
-            )
+            # Check for persistent disk mount environment variable or default to local backend/storage/cas
+            env_path = os.getenv("CAS_STORAGE_PATH")
+            if env_path:
+                base_dir = env_path
+            else:
+                base_dir = os.path.join(
+                    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "storage",
+                    "cas",
+                )
         self.base_dir = os.path.abspath(base_dir)
         os.makedirs(self.base_dir, exist_ok=True)
 
