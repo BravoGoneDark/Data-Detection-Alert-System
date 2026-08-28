@@ -1,0 +1,5 @@
+[2026-08-28 08:30:01 UTC] [FIREWALL-EDGE-01] [ALLOW] proto=TCP src=192.168.1.104:49152 dst=10.0.0.5:443 rule=OUTBOUND_HTTPS
+[2026-08-28 08:30:15 UTC] [SIEM-INGEST-NODE] [WARN] user=analyst_04 action=SSH_FAILED host=bastion.corp.ddas attempts=4
+[2026-08-28 08:30:45 UTC] [DLP-CONTAINMENT] [ALERT] user=researcher_12 file=kernel_source_dump.tar.gz size=420MB action=BLOCKED
+[2026-08-28 08:31:12 UTC] [REDIS-CLUSTER-01] [INFO] cache_hit=true key=ddas:cache:datasets:page_1 latency_ms=1.2
+[2026-08-28 08:31:55 UTC] [ANOMALY-DETECTOR] [ALERT] z_score=3.85 burst_count=14 user=temp_contractor action=QUARANTINE_AUTO

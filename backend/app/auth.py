@@ -113,8 +113,9 @@ async def signup(request: Request, payload: SignupRequest, db: Session = Depends
 
 @router.post("/login", response_model=TokenResponse)
 async def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
+    identifier = payload.identifier.strip()
     user = db.query(User).filter(
-        or_(User.username == payload.identifier, User.email == payload.identifier)
+        or_(User.username.ilike(identifier), User.email.ilike(identifier))
     ).first()
 
     if not user or not verify_password(payload.password, user.hashed_password):

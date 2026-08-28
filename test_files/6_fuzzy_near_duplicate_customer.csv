@@ -1,0 +1,6 @@
+customer_id,full_name,email,phone,city,credit_score,account_balance
+CUST-1001,Alice Morgan,alice.morgan@enterprise.org,+1-555-0192,New York,785,14250.50
+CUST-1002,David Chen,david.chen@cybersec.io,+1-555-0143,San Francisco,810,98200.00
+CUST-1003,Elena Rostova,elena.rostova@techdefense.net,+1-555-0188,Boston,740,32100.75
+CUST-1004,Marcus Vance,marcus.vance@securityops.com,+1-555-0177,Austin,690,8450.20
+CUST-1006,Jonathan King,jonathan.king@datastream.org,+1-555-0199,Chicago,770,64300.00

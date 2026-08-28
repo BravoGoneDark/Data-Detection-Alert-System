@@ -1,0 +1,4 @@
+sensor_id,unit,reading_val,temp_c,vibration_hz,status
+SNS-BETA-01,RPM,3420,41.9,13.1,OPTIMAL
+SNS-BETA-02,PSI,118.2,43.7,13.9,OPTIMAL
+SNS-BETA-03,VOLT,479.5,42.8,11.8,OPTIMAL

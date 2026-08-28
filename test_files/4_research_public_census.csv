@@ -1,0 +1,6 @@
+region_id,zone_name,population_2025,median_income,literacy_rate,broadband_coverage_pct
+REG-01,North Metropolitan,4820000,78500,98.2,96.5
+REG-02,Southern Coast,2150000,64200,94.8,88.1
+REG-03,Eastern Highlands,1320000,52100,91.4,79.3
+REG-04,Western Valley,3490000,81200,97.6,94.2
+REG-05,Central Plateau,980000,48900,89.5,72.0

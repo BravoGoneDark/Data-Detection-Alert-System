@@ -1,0 +1,4 @@
+sensor_id,unit,reading_val,temp_c,vibration_hz,status
+SNS-ALPHA-01,RPM,3450,42.5,12.8,OPTIMAL
+SNS-ALPHA-02,PSI,120.4,44.1,14.2,OPTIMAL
+SNS-ALPHA-03,VOLT,480.0,43.0,11.5,OPTIMAL
