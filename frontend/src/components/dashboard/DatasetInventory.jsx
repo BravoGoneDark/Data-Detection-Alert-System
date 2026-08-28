@@ -15,12 +15,12 @@ export default function DatasetInventory({
   const auth = useAuth ? useAuth() : {};
   const activeToken = token || auth?.token;
   const user = auth?.user;
-  const effectiveUsername = user?.username || 'Pratyush';
+  const effectiveUsername = user?.username || '';
   const canAdminDelete = Boolean(
     isAdmin ||
-    user?.role === 'ADMIN' ||
-    user?.role_name === 'ADMIN' ||
-    (effectiveUsername && ['pratyush', 'admin', 'carnage'].includes(effectiveUsername.toLowerCase()))
+    (user?.role || '').toUpperCase() === 'ADMIN' ||
+    (user?.role_name || '').toUpperCase() === 'ADMIN' ||
+    ['pratyush', 'admin'].includes(effectiveUsername.toLowerCase())
   );
 
   const [searchQuery, setSearchQuery] = useState('');

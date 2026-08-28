@@ -118,7 +118,7 @@ function UploadPanel() {
     }
   }, [qFeeds.myQuarantine?.is_quarantined]);
 
-  const isAdmin = user?.role === 'ADMIN' || user?.username?.toLowerCase() === 'pratyush' || user?.username?.toLowerCase() === 'admin';
+  const isAdmin = (user?.role || '').toUpperCase() === 'ADMIN' || ['pratyush', 'admin'].includes((user?.username || '').toLowerCase());
   const activeThreats = feeds.anomalyStats?.active_threats ?? feeds.anomalies.filter((a) => a.status === 'ACTIVE').length;
   const quarantinedCount = qFeeds.quarantineStats?.active_quarantines ?? 0;
 

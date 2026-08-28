@@ -17,21 +17,18 @@ function decodeToken(tok) {
         .join('')
     );
     const parsed = JSON.parse(jsonPayload);
-    let rawUsername = parsed.username || 'Pratyush';
-    if (rawUsername.includes('@')) {
-      rawUsername = rawUsername.split('@')[0];
+    let username = parsed.username || 'User';
+    if (username.includes('@')) {
+      username = username.split('@')[0];
     }
-    const username = rawUsername.toLowerCase().includes('pratyush') ? 'Pratyush' : rawUsername;
-    const uLower = (parsed.username || '').toLowerCase();
-    const eLower = (parsed.email || '').toLowerCase();
-    const isAdmin = parsed.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage') || parsed.sub === '1';
+    const role = (parsed.role || 'STUDENT').toUpperCase();
     return {
-      id: parsed.sub ? Number(parsed.sub) : 1,
+      id: parsed.sub ? Number(parsed.sub) : 0,
       username: username,
       email: parsed.email || `${username.toLowerCase()}@ddas.sec`,
-      role: isAdmin ? 'ADMIN' : (parsed.role || 'ADMIN'),
+      role: role,
       permissions: parsed.permissions || [],
-      ...parsed
+      ...parsed,
     };
   } catch {
     return null;
