@@ -194,12 +194,19 @@ export default function UsersModal({ isOpen, onClose, token, currentUsername }) 
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300">
                 {users.map((u) => {
-                  const isCurrent = u.username.toLowerCase() === currentUsername?.toLowerCase();
+                  const rawName = u.username || 'User';
+                  const cleanName = rawName.includes('@') ? rawName.split('@')[0] : rawName;
+                  const displayName = cleanName.toLowerCase().includes('pratyush') ? 'Pratyush' : cleanName;
+                  const isCurrent = (
+                    displayName.toLowerCase() === currentUsername?.toLowerCase() ||
+                    u.username.toLowerCase() === currentUsername?.toLowerCase() ||
+                    (currentUsername && u.email.toLowerCase().includes(currentUsername.toLowerCase()))
+                  );
                   return (
                     <tr key={u.id} className="hover:bg-slate-800/40 transition-colors">
                       <td className="py-3 px-3">
                         <div className="font-semibold text-white font-mono flex items-center gap-2">
-                          <span>{u.username}</span>
+                          <span>{displayName}</span>
                           {isCurrent && (
                             <span className="px-1.5 py-0.2 rounded text-[9px] bg-violet-600/30 text-violet-300 border border-violet-500/40">
                               YOU

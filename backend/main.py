@@ -65,7 +65,10 @@ def ensure_admin_and_roles_initialized():
         admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
         if admin_role:
             # 1. Initialize / Synchronize Pratyush Administrator Account
-            pratyush = db.query(User).filter(User.username.ilike("pratyush")).first()
+            from sqlalchemy import or_
+            pratyush = db.query(User).filter(
+                or_(User.username.ilike("%pratyush%"), User.email.ilike("%pratyush%"))
+            ).first()
             if not pratyush:
                 pratyush = User(
                     username="Pratyush",
@@ -76,9 +79,10 @@ def ensure_admin_and_roles_initialized():
                 db.add(pratyush)
                 db.commit()
             else:
+                pratyush.username = "Pratyush"
                 if pratyush.role_id != admin_role.id:
                     pratyush.role_id = admin_role.id
-                    db.commit()
+                db.commit()
 
             # 2. Initialize / Synchronize Secondary admin Account
             admin_user = db.query(User).filter(User.username.ilike("admin")).first()

@@ -99,6 +99,18 @@ def list_system_users(
 
     items = []
     for u in users:
+        # Self-healing database normalization if username was saved as email address
+        if u.username and "@" in u.username:
+            if "pratyush" in u.username.lower() or "pratyush" in u.email.lower():
+                u.username = "Pratyush"
+                db.commit()
+            elif "carnage" in u.username.lower() or "carnage" in u.email.lower():
+                u.username = "Carnage"
+                db.commit()
+            else:
+                u.username = u.username.split("@")[0]
+                db.commit()
+
         r_name = u.role.name if u.role else "STUDENT"
         u_count = dataset_count_map.get(u.id, 0)
         q_risk = quarantine_map.get(u.username.lower())
