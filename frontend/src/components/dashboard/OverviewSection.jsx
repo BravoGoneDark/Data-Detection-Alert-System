@@ -47,11 +47,11 @@ export default function OverviewSection({
     offset: ['start start', 'end end'],
   });
 
-  // 2. Critically-damped spring physics (Zero bounce, zero oscillation)
+  // 2. High-speed critically-damped spring physics
   const progress = useSpring(scrollYProgress, {
-    stiffness: 140,
-    damping: 36,
-    mass: 0.25,
+    stiffness: 350,
+    damping: 38,
+    mass: 0.15,
     restDelta: 0.0001,
   });
 
@@ -66,7 +66,7 @@ export default function OverviewSection({
       window.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' });
       setTimeout(() => {
         isProgrammaticRef.current = false;
-      }, 120);
+      }, 100);
     }
   }, []);
 
@@ -120,7 +120,7 @@ export default function OverviewSection({
   const f4Y = useTransform(progress, [0.74, 0.84], [80, 0]);
   const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
 
-  // Smooth jump that immediately highlights target & smoothly scrolls with 0 bounce
+  // Direct card-style jump on click: instantly activates clicked card without traversing intermediate path
   const jumpToFraction = (fraction, stage) => {
     setActiveStage(stage);
     if (onStageChange) onStageChange(stage);
@@ -128,12 +128,12 @@ export default function OverviewSection({
     clearTimeout(scrollLockTimerRef.current);
     scrollLockTimerRef.current = setTimeout(() => {
       isProgrammaticRef.current = false;
-    }, 600);
+    }, 150);
 
     if (containerRef.current) {
       const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
       const top = containerRef.current.offsetTop + fraction * scrollableHeight;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+      window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
     }
   };
 
