@@ -19,6 +19,7 @@ export default function AnomalyDefenseModal({
   setUserFilter,
   onRefresh,
   token,
+  isAdmin = false,
 }) {
   const [resolvingId, setResolvingId] = useState(null);
   const [resolutionSuccess, setResolutionSuccess] = useState(null);
@@ -291,35 +292,41 @@ export default function AnomalyDefenseModal({
                         </span>
                       </td>
                       <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          {a.status === 'ACTIVE' && (
-                            <button
-                              disabled={resolvingId === a.id}
-                              onClick={() => handleResolve(a.id, 'INVESTIGATING')}
-                              className="px-2 py-1 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-700/60 text-[10px] transition-colors"
-                            >
-                              Investigate
-                            </button>
-                          )}
-                          {a.status !== 'RESOLVED' && (
-                            <button
-                              disabled={resolvingId === a.id}
-                              onClick={() => handleResolve(a.id, 'RESOLVED')}
-                              className="px-2 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-700/60 text-[10px] transition-colors"
-                            >
-                              Resolve
-                            </button>
-                          )}
-                          {a.status !== 'FALSE_POSITIVE' && a.status !== 'RESOLVED' && (
-                            <button
-                              disabled={resolvingId === a.id}
-                              onClick={() => handleResolve(a.id, 'FALSE_POSITIVE')}
-                              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 text-[10px] transition-colors"
-                            >
-                              False Pos
-                            </button>
-                          )}
-                        </div>
+                        {isAdmin ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            {a.status === 'ACTIVE' && (
+                              <button
+                                disabled={resolvingId === a.id}
+                                onClick={() => handleResolve(a.id, 'INVESTIGATING')}
+                                className="px-2 py-1 rounded bg-amber-950/60 hover:bg-amber-900/60 text-amber-300 border border-amber-700/60 text-[10px] transition-colors cursor-pointer"
+                              >
+                                Investigate
+                              </button>
+                            )}
+                            {a.status !== 'RESOLVED' && (
+                              <button
+                                disabled={resolvingId === a.id}
+                                onClick={() => handleResolve(a.id, 'RESOLVED')}
+                                className="px-2 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/60 text-emerald-300 border border-emerald-700/60 text-[10px] transition-colors cursor-pointer"
+                              >
+                                Resolve
+                              </button>
+                            )}
+                            {a.status !== 'FALSE_POSITIVE' && a.status !== 'RESOLVED' && (
+                              <button
+                                disabled={resolvingId === a.id}
+                                onClick={() => handleResolve(a.id, 'FALSE_POSITIVE')}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-400 border border-slate-700 text-[10px] transition-colors cursor-pointer"
+                              >
+                                False Pos
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-500 font-semibold">
+                            🔒 Analyst Only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

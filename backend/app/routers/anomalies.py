@@ -6,7 +6,7 @@ from sqlalchemy import desc
 
 from app.database import get_db
 from app.models import User, AnomalyEvent
-from app.authorization import require_permission
+from app.authorization import require_permission, require_admin
 from app.audit_logger import record_audit_event
 from app.schemas import (
     AnomalyEventOut,
@@ -150,7 +150,7 @@ async def resolve_anomaly_event(
     payload: AnomalyResolveRequest,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("dataset:upload")),
+    current_user: User = Depends(require_admin()),
 ):
     """
     Updates anomaly status (e.g. INVESTIGATING, RESOLVED, FALSE_POSITIVE) with audit trail.

@@ -15,6 +15,7 @@ export default function QuarantineModal({
   onRefresh,
   onRelease,
   onManualQuarantine,
+  isAdmin = false,
 }) {
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualUser, setManualUser] = useState('');
@@ -138,17 +139,23 @@ export default function QuarantineModal({
             </div>
           </div>
           <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-center justify-end">
-            <button
-              onClick={() => {
-                setManualError(null);
-                setManualUser('');
-                setManualReason('');
-                setShowManualModal(true);
-              }}
-              className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors shadow-[0_0_12px_rgba(244,63,94,0.4)] flex items-center justify-center gap-1.5"
-            >
-              <span>⚡</span> Manual Quarantine
-            </button>
+            {isAdmin ? (
+              <button
+                onClick={() => {
+                  setManualError(null);
+                  setManualUser('');
+                  setManualReason('');
+                  setShowManualModal(true);
+                }}
+                className="w-full py-2 px-3 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-colors shadow-[0_0_12px_rgba(244,63,94,0.4)] flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span>⚡</span> Manual Quarantine
+              </button>
+            ) : (
+              <span className="text-[11px] text-slate-500 font-mono text-center w-full">
+                🔒 Read-Only Monitoring
+              </span>
+            )}
           </div>
         </div>
 
@@ -245,16 +252,22 @@ export default function QuarantineModal({
                     </td>
                     <td className="py-3 px-3 text-right">
                       {rec.status === 'ACTIVE' && (
-                        <button
-                          onClick={() => {
-                            setReleaseError(null);
-                            setReleasingRecord(rec);
-                            setReleaseNotes('');
-                          }}
-                          className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs font-semibold transition-colors shadow-sm"
-                        >
-                          Release Clearance
-                        </button>
+                        isAdmin ? (
+                          <button
+                            onClick={() => {
+                              setReleaseError(null);
+                              setReleasingRecord(rec);
+                              setReleaseNotes('');
+                            }}
+                            className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs font-semibold transition-colors shadow-sm cursor-pointer"
+                          >
+                            Release Clearance
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-500 font-semibold">
+                            🔒 Admin Only
+                          </span>
+                        )
                       )}
                     </td>
                   </tr>

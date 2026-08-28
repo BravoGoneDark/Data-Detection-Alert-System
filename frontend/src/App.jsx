@@ -298,6 +298,7 @@ function UploadPanel() {
         setUserFilter={feeds.setUserFilter}
         onRefresh={feeds.fetchAnomalies}
         token={token}
+        isAdmin={isAdmin}
       />
 
       <QuarantineModal
@@ -312,6 +313,7 @@ function UploadPanel() {
         userFilter={qFeeds.quarantineUserFilter}
         setUserFilter={qFeeds.setQuarantineUserFilter}
         onRefresh={qFeeds.fetchQuarantines}
+        isAdmin={isAdmin}
         onRelease={async (id, notes) => {
           const res = await qFeeds.releaseQuarantine(id, notes);
           await qFeeds.fetchMyQuarantineStatus();
@@ -334,6 +336,7 @@ function UploadPanel() {
         onCreate={qFeeds.createWebhook}
         onDelete={qFeeds.deleteWebhook}
         onTest={qFeeds.testWebhook}
+        isAdmin={isAdmin}
       />
 
       <UsersModal

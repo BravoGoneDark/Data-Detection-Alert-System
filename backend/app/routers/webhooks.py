@@ -8,7 +8,7 @@ from sqlalchemy import desc
 
 from app.database import get_db
 from app.models import User, WebhookConfig
-from app.authorization import require_permission
+from app.authorization import require_permission, require_admin
 from app.alerting import test_webhook_connection
 from app.audit_logger import record_audit_event
 from app.schemas import (
@@ -55,9 +55,9 @@ async def create_webhook(
     payload: WebhookConfigCreate,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("dataset:upload")),
+    current_user: User = Depends(require_admin()),
 ):
-    """Registers a new outbound security webhook endpoint."""
+    """Registers a new outbound security webhook endpoint. Requires ADMIN role."""
     wh = WebhookConfig(
         name=payload.name,
         url=payload.url,
@@ -100,9 +100,9 @@ async def delete_webhook(
     webhook_id: int,
     request: Request,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission("dataset:upload")),
+    current_user: User = Depends(require_admin()),
 ):
-    """Deletes an outbound security webhook endpoint."""
+    """Deletes an outbound security webhook endpoint. Requires ADMIN role."""
     wh = db.query(WebhookConfig).filter(WebhookConfig.id == webhook_id).first()
     if not wh:
         raise HTTPException(status_code=404, detail="Webhook configuration not found")

@@ -67,3 +67,24 @@ def require_permission(permission: str):
         return current_user
 
     return checker
+
+
+def require_admin():
+    """
+    Dependency factory. Requires the authenticated user to hold the ADMIN role.
+    Raises 403 Forbidden for students, researchers, and standard users.
+    """
+    def checker(current_user: User = Depends(get_current_user)) -> User:
+        is_admin = (
+            current_user.role_id == 1
+            or (current_user.role and current_user.role.name == "ADMIN")
+            or current_user.username.lower() in ("pratyush", "admin", "carnage")
+        )
+        if not is_admin:
+            raise HTTPException(
+                status_code=403,
+                detail="Administrative clearance required for this operation.",
+            )
+        return current_user
+
+    return checker

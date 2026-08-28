@@ -19,6 +19,7 @@ export default function WebhookConfigModal({
   onCreate,
   onDelete,
   onTest,
+  isAdmin = false,
 }) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [name, setName] = useState('');
@@ -101,19 +102,25 @@ export default function WebhookConfigModal({
           <div className="flex items-center gap-2">
             <button
               onClick={onRefresh}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
             >
               🔄 Refresh
             </button>
-            <button
-              onClick={() => {
-                setShowAddForm(true);
-                setActionError(null);
-              }}
-              className="text-xs px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors shadow-[0_0_10px_rgba(99,102,241,0.4)] flex items-center gap-1"
-            >
-              <span>+</span> Register New Webhook
-            </button>
+            {isAdmin ? (
+              <button
+                onClick={() => {
+                  setShowAddForm(true);
+                  setActionError(null);
+                }}
+                className="text-xs px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-colors shadow-[0_0_10px_rgba(99,102,241,0.4)] flex items-center gap-1 cursor-pointer"
+              >
+                <span>+</span> Register New Webhook
+              </button>
+            ) : (
+              <span className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-500 font-mono flex items-center gap-1.5">
+                🔒 Admin Only
+              </span>
+            )}
           </div>
         </div>
 
@@ -174,17 +181,19 @@ export default function WebhookConfigModal({
                       <button
                         onClick={() => onTest(wh.id)}
                         disabled={isTesting}
-                        className="px-3 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 text-xs font-semibold transition-colors flex items-center gap-1"
+                        className="px-3 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-300 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
                       >
                         <span>📡</span> {isTesting ? 'Pinging...' : 'Test Ping'}
                       </button>
-                      <button
-                        onClick={() => onDelete(wh.id)}
-                        className="px-2.5 py-1 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300 text-xs transition-colors"
-                        title="Delete Webhook"
-                      >
-                        🗑️
-                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => onDelete(wh.id)}
+                          className="px-2.5 py-1 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300 text-xs transition-colors cursor-pointer"
+                          title="Delete Webhook"
+                        >
+                          🗑️
+                        </button>
+                      )}
                     </div>
 
                     {hasTested && (
