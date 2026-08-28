@@ -30,6 +30,7 @@ export default function OverviewSection({
   onOpenRedis,
   onOpenWebhooks,
   isAdmin = false,
+  onStageChange,
 }) {
   const containerRef = useRef(null);
   const [activeStage, setActiveStage] = useState(1);
@@ -54,15 +55,18 @@ export default function OverviewSection({
 
   // 3. Sync HUD pill highlights in exact frame-by-frame lockstep with the visual spring progress
   useMotionValueEvent(progress, 'change', (latest) => {
+    let nextStage = 1;
     if (latest < 0.23) {
-      setActiveStage(1);
+      nextStage = 1;
     } else if (latest >= 0.23 && latest < 0.49) {
-      setActiveStage(2);
+      nextStage = 2;
     } else if (latest >= 0.49 && latest < 0.75) {
-      setActiveStage(3);
+      nextStage = 3;
     } else {
-      setActiveStage(4);
+      nextStage = 4;
     }
+    setActiveStage(nextStage);
+    if (onStageChange) onStageChange(nextStage);
   });
 
   // Background Watermark "✦ DDAS SOC"

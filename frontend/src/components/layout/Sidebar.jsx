@@ -4,6 +4,9 @@ import React from 'react';
 export default function Sidebar({
   activeView = 'overview', // 'overview' | 'inventory' | 'upload'
   setActiveView,
+  overviewStage = 1,
+  setOverviewStage,
+  activeModals = {},
   onOpenWatchdog,
   onOpenQuarantine,
   onOpenAudit,
@@ -23,8 +26,11 @@ export default function Sidebar({
   const eLower = (user?.email || '').toLowerCase();
   const isAdmin = user?.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage');
 
-  const scrollToFraction = (fraction, fallbackView) => {
-    setActiveView(fallbackView);
+  const scrollToFraction = (fraction, targetStage) => {
+    if (setOverviewStage) setOverviewStage(targetStage);
+    if (activeView !== 'overview') {
+      setActiveView('overview');
+    }
     setTimeout(() => {
       const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (scrollHeight > 0) {
@@ -32,6 +38,26 @@ export default function Sidebar({
       }
     }, 50);
   };
+
+  const isOverviewActive = activeView === 'overview' && overviewStage === 1;
+  const isAnalyticsActive = activeView === 'overview' && overviewStage === 2;
+  const isTelemetryActive = activeView === 'overview' && overviewStage === 3;
+  const isInventoryActive = activeView === 'inventory' || (activeView === 'overview' && overviewStage === 4);
+  const isUploadActive = activeView === 'upload';
+
+  const getNavButtonClass = (isActive) =>
+    `w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+      isActive
+        ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.45)] border border-violet-400/40'
+        : 'text-slate-400 hover:text-white hover:bg-slate-900/80 border border-transparent'
+    }`;
+
+  const getModalButtonClass = (isActive) =>
+    `w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200 cursor-pointer ${
+      isActive
+        ? 'bg-slate-900 text-violet-200 border border-violet-500/80 shadow-[0_0_15px_rgba(139,92,246,0.3)] font-bold'
+        : 'text-slate-400 hover:text-white hover:bg-slate-900/80 border border-transparent'
+    }`;
 
   return (
     <aside className="fixed top-0 left-0 h-screen w-64 bg-slate-950/95 border-r border-slate-800/80 backdrop-blur-2xl flex flex-col justify-between p-4 select-none z-30 overflow-y-auto scrollbar-none">
@@ -63,65 +89,68 @@ export default function Sidebar({
             General
           </div>
           
+          {/* SOC Overview (Stage 1) */}
           <button
-            onClick={() => scrollToFraction(0.0, 'overview')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeView === 'overview'
-                ? 'bg-violet-600 text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-            }`}
+            onClick={() => scrollToFraction(0.0, 1)}
+            className={getNavButtonClass(isOverviewActive)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">📊</span>
               <span>SOC Overview</span>
             </div>
+            {isOverviewActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse" />}
           </button>
 
+          {/* Visual Analytics (Stage 2) */}
           <button
-            onClick={() => scrollToFraction(0.36, 'overview')}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            onClick={() => scrollToFraction(0.36, 2)}
+            className={getNavButtonClass(isAnalyticsActive)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">📈</span>
               <span>Visual Analytics</span>
             </div>
+            {isAnalyticsActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse" />}
           </button>
 
+          {/* Live Telemetry (Stage 3) */}
           <button
-            onClick={() => scrollToFraction(0.65, 'overview')}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            onClick={() => scrollToFraction(0.65, 3)}
+            className={getNavButtonClass(isTelemetryActive)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">⚡</span>
               <span>Live Telemetry</span>
             </div>
+            {isTelemetryActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse" />}
           </button>
 
+          {/* Dataset Inventory (Stage 4 or dedicated view) */}
           <button
-            onClick={() => scrollToFraction(0.95, 'overview')}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            onClick={() => scrollToFraction(0.95, 4)}
+            className={getNavButtonClass(isInventoryActive)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">📁</span>
               <span>Dataset Inventory</span>
             </div>
-            <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-800 text-slate-300">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono ${
+              isInventoryActive ? 'bg-violet-950 text-violet-200 border border-violet-400/40' : 'bg-slate-800 text-slate-300'
+            }`}>
               {datasetCount}
             </span>
           </button>
 
+          {/* Ingestion Dropzone */}
           <button
             onClick={() => setActiveView('upload')}
-            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
-              activeView === 'upload'
-                ? 'bg-violet-600 text-white shadow-[0_0_15px_rgba(139,92,246,0.4)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900/60'
-            }`}
+            className={getNavButtonClass(isUploadActive)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">⚡</span>
               <span>Ingestion Dropzone</span>
             </div>
+            {isUploadActive && <span className="w-1.5 h-1.5 rounded-full bg-cyan-300 animate-pulse" />}
           </button>
         </div>
 
@@ -133,7 +162,7 @@ export default function Sidebar({
 
           <button
             onClick={onOpenWatchdog}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all group"
+            className={getModalButtonClass(activeModals.watchdog)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">🛡️</span>
@@ -148,7 +177,7 @@ export default function Sidebar({
 
           <button
             onClick={onOpenQuarantine}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all group"
+            className={getModalButtonClass(activeModals.quarantine)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">🔒</span>
@@ -163,7 +192,7 @@ export default function Sidebar({
 
           <button
             onClick={onOpenAudit}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            className={getModalButtonClass(activeModals.audit)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">📜</span>
@@ -181,7 +210,7 @@ export default function Sidebar({
           {isAdmin && (
             <button
               onClick={onOpenUsers}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+              className={getModalButtonClass(activeModals.users)}
             >
               <div className="flex items-center gap-2.5">
                 <span className="text-sm">👥</span>
@@ -195,7 +224,7 @@ export default function Sidebar({
 
           <button
             onClick={onOpenRedis}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            className={getModalButtonClass(activeModals.redis)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">⚡</span>
@@ -205,7 +234,7 @@ export default function Sidebar({
 
           <button
             onClick={onOpenWebhooks}
-            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/60 transition-all"
+            className={getModalButtonClass(activeModals.webhooks)}
           >
             <div className="flex items-center gap-2.5">
               <span className="text-sm">🔔</span>
@@ -219,7 +248,7 @@ export default function Sidebar({
           </button>
         </div>
 
-        {/* 5. USER PROFILE & LOGOUT (PLACED IN THE TOP STACK AS THE LAST ITEM) */}
+        {/* 5. USER PROFILE & LOGOUT */}
         <div className="pt-2 space-y-2">
           <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/80 border border-slate-800">
             <div className="flex items-center gap-2.5 overflow-hidden">
@@ -236,7 +265,7 @@ export default function Sidebar({
 
           <button
             onClick={onLogout}
-            className="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/60 text-slate-400 text-xs font-semibold border border-slate-800 transition-all flex items-center justify-center gap-2"
+            className="w-full py-1.5 px-3 rounded-xl bg-slate-900 hover:bg-rose-950/60 hover:text-rose-300 hover:border-rose-700/60 text-slate-400 text-xs font-semibold border border-slate-800 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>🚪</span>
             <span>Log Out</span>

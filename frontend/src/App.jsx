@@ -34,6 +34,7 @@ function UploadPanel() {
   const [globalSearch, setGlobalSearch] = useState('');
   const [datasets, setDatasets] = useState([]);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [overviewStage, setOverviewStage] = useState(1);
 
   // Modal Visibility State
   const [showLshModal, setShowLshModal] = useState(false);
@@ -128,6 +129,16 @@ function UploadPanel() {
       <Sidebar
         activeView={activeView}
         setActiveView={setActiveView}
+        overviewStage={overviewStage}
+        setOverviewStage={setOverviewStage}
+        activeModals={{
+          watchdog: showAnomalyModal,
+          quarantine: showQuarantineModal,
+          audit: showAuditModal,
+          users: showUsersModal,
+          redis: showRedisModal,
+          webhooks: showWebhooksModal,
+        }}
         onOpenWatchdog={() => setShowAnomalyModal(true)}
         onOpenQuarantine={() => setShowQuarantineModal(true)}
         onOpenAudit={() => setShowAuditModal(true)}
@@ -183,6 +194,7 @@ function UploadPanel() {
               onOpenRedis={() => setShowRedisModal(true)}
               onOpenWebhooks={() => setShowWebhooksModal(true)}
               isAdmin={isAdmin}
+              onStageChange={setOverviewStage}
             />
           )}
 
