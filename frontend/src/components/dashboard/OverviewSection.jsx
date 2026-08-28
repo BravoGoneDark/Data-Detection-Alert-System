@@ -46,11 +46,11 @@ export default function OverviewSection({
     offset: ['start start', 'end end'],
   });
 
-  // 2. Smooth spring physics (balanced response)
+  // 2. Ultra-silky spring physics (balanced fluid response)
   const progress = useSpring(scrollYProgress, {
-    stiffness: 55,
-    damping: 24,
-    mass: 0.65,
+    stiffness: 85,
+    damping: 25,
+    mass: 0.35,
     restDelta: 0.0001,
   });
 
@@ -74,33 +74,33 @@ export default function OverviewSection({
   const watermarkOpacity = useTransform(progress, [0, 0.4, 0.7, 1], [0.08, 0.15, 0.15, 0.08]);
   const watermarkScale = useTransform(progress, [0, 1], [0.95, 1.08]);
 
-  // --- FRAME 1: HERO ARCHITECTURE SHOWCASE (0.00 -> 0.25) ---
-  const f1Opacity = useTransform(progress, [0, 0.16, 0.25], [1, 0.85, 0]);
-  const f1Scale = useTransform(progress, [0, 0.25], [1, 0.88]);
-  const f1Y = useTransform(progress, [0, 0.25], [0, -60]);
-  const f1PointerEvents = useTransform(progress, (p) => (p < 0.21 ? 'auto' : 'none'));
+  // --- FRAME 1: HERO ARCHITECTURE SHOWCASE (0.00 -> 0.24) ---
+  const f1Opacity = useTransform(progress, [0, 0.14, 0.24], [1, 0.9, 0]);
+  const f1Scale = useTransform(progress, [0, 0.24], [1, 0.92]);
+  const f1Y = useTransform(progress, [0, 0.24], [0, -45]);
+  const f1PointerEvents = useTransform(progress, (p) => (p < 0.20 ? 'auto' : 'none'));
 
-  // --- FRAME 2: 3 FLOATING ANALYTICS CARDS (0.17 -> 0.57) ---
-  const f2Opacity = useTransform(progress, [0.17, 0.26, 0.48, 0.57], [0, 1, 1, 0]);
-  const f2Scale = useTransform(progress, [0.17, 0.28, 0.48, 0.57], [0.86, 1, 1, 0.88]);
-  const f2Y = useTransform(progress, [0.17, 0.28, 0.48, 0.57], [80, 0, 0, -60]);
-  const f2PointerEvents = useTransform(progress, (p) => (p >= 0.21 && p <= 0.53 ? 'auto' : 'none'));
+  // --- FRAME 2: 3 FLOATING ANALYTICS CARDS (0.14 -> 0.58) ---
+  const f2Opacity = useTransform(progress, [0.14, 0.24, 0.48, 0.58], [0, 1, 1, 0]);
+  const f2Scale = useTransform(progress, [0.14, 0.26, 0.48, 0.58], [0.90, 1, 1, 0.90]);
+  const f2Y = useTransform(progress, [0.14, 0.26, 0.48, 0.58], [60, 0, 0, -45]);
+  const f2PointerEvents = useTransform(progress, (p) => (p >= 0.18 && p <= 0.54 ? 'auto' : 'none'));
 
   // Frame 2 Floating Micro-Offsets
-  const card1Offset = useTransform(progress, [0.21, 0.38], [-18, 0]);
-  const card2Offset = useTransform(progress, [0.21, 0.38], [18, 0]);
-  const card3Offset = useTransform(progress, [0.21, 0.38], [-18, 0]);
+  const card1Offset = useTransform(progress, [0.18, 0.36], [-14, 0]);
+  const card2Offset = useTransform(progress, [0.18, 0.36], [14, 0]);
+  const card3Offset = useTransform(progress, [0.18, 0.36], [-14, 0]);
 
-  // --- FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (0.49 -> 0.82) ---
-  const f3Opacity = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [0, 1, 1, 0]);
-  const f3Scale = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [0.86, 1, 1, 0.88]);
-  const f3Y = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [80, 0, 0, -60]);
-  const f3PointerEvents = useTransform(progress, (p) => (p >= 0.50 && p <= 0.79 ? 'auto' : 'none'));
+  // --- FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (0.48 -> 0.84) ---
+  const f3Opacity = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [0, 1, 1, 0]);
+  const f3Scale = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [0.90, 1, 1, 0.90]);
+  const f3Y = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [60, 0, 0, -45]);
+  const f3PointerEvents = useTransform(progress, (p) => (p >= 0.50 && p <= 0.80 ? 'auto' : 'none'));
 
   // --- FRAME 4: CAS REPOSITORY & DATASET INVENTORY (0.74 -> 1.00) ---
-  const f4Opacity = useTransform(progress, [0.74, 0.83], [0, 1]);
-  const f4Scale = useTransform(progress, [0.74, 0.84], [0.88, 1]);
-  const f4Y = useTransform(progress, [0.74, 0.84], [80, 0]);
+  const f4Opacity = useTransform(progress, [0.74, 0.84], [0, 1]);
+  const f4Scale = useTransform(progress, [0.74, 0.84], [0.90, 1]);
+  const f4Y = useTransform(progress, [0.74, 0.84], [60, 0]);
   const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
 
   // Immediate jump on taskbar or HUD button click

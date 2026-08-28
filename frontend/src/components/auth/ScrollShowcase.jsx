@@ -13,46 +13,46 @@ export default function ScrollShowcase({ onOpenAuth }) {
     offset: ['start start', 'end end'],
   });
 
-  // Buttery, cinematic spring smoothing curve (eliminates all jitter)
+  // Buttery, cinematic spring smoothing curve (eliminates all jitter & blockiness)
   const progress = useSpring(scrollYProgress, {
-    stiffness: 60,
-    damping: 24,
-    mass: 0.6,
+    stiffness: 85,
+    damping: 26,
+    mass: 0.35,
     restDelta: 0.0001,
   });
 
   // Frame 1: Intro Hero & Big Glowing Logo (0.00 -> 0.22)
-  const heroOpacity = useTransform(progress, [0, 0.14, 0.22], [1, 0.8, 0]);
-  const heroScale = useTransform(progress, [0, 0.22], [1, 0.88]);
-  const heroY = useTransform(progress, [0, 0.22], [0, -50]);
+  const heroOpacity = useTransform(progress, [0, 0.12, 0.22], [1, 0.85, 0]);
+  const heroScale = useTransform(progress, [0, 0.22], [1, 0.92]);
+  const heroY = useTransform(progress, [0, 0.22], [0, -40]);
   const heroPointerEvents = useTransform(progress, (p) => (p < 0.18 ? 'auto' : 'none'));
 
-  // Frame 2 & 3: Detailed Smart Dashboard (Enters 0.14, Stays 0.24 -> 0.82)
-  const dashOpacity = useTransform(progress, [0.12, 0.24, 0.84, 0.92], [0, 1, 1, 0]);
-  const dashScale = useTransform(progress, [0.14, 0.26, 0.52, 0.68], [0.86, 1, 1, 0.88]);
-  const dashY = useTransform(progress, [0.14, 0.26, 0.84, 0.92], [70, 0, 0, -40]);
-  const dashPointerEvents = useTransform(progress, (p) => (p >= 0.16 && p <= 0.86 ? 'auto' : 'none'));
+  // Frame 2 & 3: Detailed Smart Dashboard (Enters 0.12, Stays smoothly across 0.22 -> 0.80)
+  const dashOpacity = useTransform(progress, [0.12, 0.22, 0.80, 0.90], [0, 1, 1, 0]);
+  const dashScale = useTransform(progress, [0.12, 0.24, 0.78, 0.90], [0.92, 1, 1, 0.92]);
+  const dashY = useTransform(progress, [0.12, 0.24, 0.80, 0.90], [50, 0, 0, -40]);
+  const dashPointerEvents = useTransform(progress, (p) => (p >= 0.16 && p <= 0.84 ? 'auto' : 'none'));
 
   // Top Glowing Pill Badge
-  const topPillOpacity = useTransform(progress, [0.14, 0.24, 0.84, 0.92], [0, 1, 1, 0]);
+  const topPillOpacity = useTransform(progress, [0.14, 0.24, 0.80, 0.90], [0, 1, 1, 0]);
   const topPillY = useTransform(progress, [0.14, 0.24], [-15, 0]);
 
   // Background Watermark "✦ DDAS"
-  const watermarkOpacity = useTransform(progress, [0.42, 0.56, 0.84, 0.92], [0, 0.18, 0.18, 0]);
-  const watermarkScale = useTransform(progress, [0.42, 0.7], [0.92, 1.05]);
+  const watermarkOpacity = useTransform(progress, [0.30, 0.50, 0.80, 0.92], [0, 0.18, 0.18, 0]);
+  const watermarkScale = useTransform(progress, [0.30, 0.70], [0.94, 1.06]);
 
   // Frame 3: Surrounding Floating Cards & HUD Overlays
-  const overlaysOpacity = useTransform(progress, [0.46, 0.58, 0.82, 0.90], [0, 1, 1, 0]);
-  const leftPillsX = useTransform(progress, [0.46, 0.58], [-50, 0]);
-  const rightWidgetX = useTransform(progress, [0.46, 0.58], [50, 0]);
-  const leftPanelX = useTransform(progress, [0.52, 0.64], [-60, 0]);
-  const rightPanelX = useTransform(progress, [0.52, 0.64], [60, 0]);
+  const overlaysOpacity = useTransform(progress, [0.36, 0.50, 0.76, 0.88], [0, 1, 1, 0]);
+  const leftPillsX = useTransform(progress, [0.36, 0.50], [-35, 0]);
+  const rightWidgetX = useTransform(progress, [0.36, 0.50], [35, 0]);
+  const leftPanelX = useTransform(progress, [0.42, 0.56], [-40, 0]);
+  const rightPanelX = useTransform(progress, [0.42, 0.56], [40, 0]);
 
-  // Frame 4: Final Launch Gateway (Enters 0.82 -> 1.00)
-  const launchOpacity = useTransform(progress, [0.82, 0.92], [0, 1]);
-  const launchScale = useTransform(progress, [0.82, 0.92], [0.9, 1]);
-  const launchY = useTransform(progress, [0.82, 0.92], [50, 0]);
-  const launchPointerEvents = useTransform(progress, (p) => (p >= 0.85 ? 'auto' : 'none'));
+  // Frame 4: Final Launch Gateway (Enters 0.80 -> 1.00)
+  const launchOpacity = useTransform(progress, [0.80, 0.92], [0, 1]);
+  const launchScale = useTransform(progress, [0.80, 0.92], [0.92, 1]);
+  const launchY = useTransform(progress, [0.80, 0.92], [40, 0]);
+  const launchPointerEvents = useTransform(progress, (p) => (p >= 0.82 ? 'auto' : 'none'));
 
   return (
     <div ref={containerRef} className="relative w-full h-[380vh]">
