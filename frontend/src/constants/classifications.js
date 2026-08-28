@@ -4,8 +4,13 @@ export const API_URL = (() => {
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
-  if (typeof window !== 'undefined' && window.location.port === '3000') {
-    return '/api';
+  if (typeof window !== 'undefined') {
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      return window.location.origin;
+    }
+    if (window.location.port === '3000') {
+      return '/api';
+    }
   }
   return 'http://127.0.0.1:8000';
 })();

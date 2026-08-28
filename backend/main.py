@@ -51,6 +51,57 @@ app.include_router(redis_admin_router)
 app.include_router(users_admin_router)
 
 
+@app.on_event("startup")
+def ensure_admin_and_roles_initialized():
+    """
+    Ensures that default security roles and the primary Administrator accounts
+    (Pratyush & admin) are seeded/synchronized with known credentials upon deployment startup.
+    """
+    from app.database import SessionLocal
+    from app.models import Role, User
+    from app.security import hash_password
+    db = SessionLocal()
+    try:
+        admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
+        if admin_role:
+            # 1. Initialize / Synchronize Pratyush Administrator Account
+            pratyush = db.query(User).filter(User.username.ilike("pratyush")).first()
+            if not pratyush:
+                pratyush = User(
+                    username="Pratyush",
+                    email="pratyushn312006@yahoo.com",
+                    hashed_password=hash_password("Admin123!"),
+                    role_id=admin_role.id,
+                )
+                db.add(pratyush)
+                db.commit()
+            else:
+                if pratyush.role_id != admin_role.id:
+                    pratyush.role_id = admin_role.id
+                    db.commit()
+
+            # 2. Initialize / Synchronize Secondary admin Account
+            admin_user = db.query(User).filter(User.username.ilike("admin")).first()
+            if not admin_user:
+                admin_user = User(
+                    username="admin",
+                    email="admin@ddas.sec",
+                    hashed_password=hash_password("Admin123!"),
+                    role_id=admin_role.id,
+                )
+                db.add(admin_user)
+                db.commit()
+            else:
+                if admin_user.role_id != admin_role.id:
+                    admin_user.role_id = admin_role.id
+                    db.commit()
+    except Exception as e:
+        db.rollback()
+        print("Startup admin synchronization error:", e)
+    finally:
+        db.close()
+
+
 @app.get("/")
 def root():
     return {

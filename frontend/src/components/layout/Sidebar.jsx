@@ -16,8 +16,12 @@ export default function Sidebar({
   activeThreats = 0,
   quarantinedCount = 0,
 }) {
-  const effectiveUsername = user?.username || 'Pratyush';
-  const isAdmin = user?.role === 'ADMIN' || ['pratyush', 'admin', 'carnage'].includes(effectiveUsername.toLowerCase());
+  const rawUsername = user?.username || 'Pratyush';
+  const cleanName = rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername;
+  const effectiveUsername = cleanName.toLowerCase().includes('pratyush') ? 'Pratyush' : cleanName;
+  const uLower = (user?.username || '').toLowerCase();
+  const eLower = (user?.email || '').toLowerCase();
+  const isAdmin = user?.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage');
 
   const scrollToFraction = (fraction, fallbackView) => {
     setActiveView(fallbackView);

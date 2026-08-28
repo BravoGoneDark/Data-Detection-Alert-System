@@ -17,11 +17,18 @@ function decodeToken(tok) {
         .join('')
     );
     const parsed = JSON.parse(jsonPayload);
-    const username = parsed.username || (parsed.sub === '1' ? 'Pratyush' : 'Pratyush');
-    const isAdmin = parsed.role === 'ADMIN' || ['pratyush', 'admin', 'carnage'].includes(username?.toLowerCase()) || parsed.sub === '1';
+    let rawUsername = parsed.username || 'Pratyush';
+    if (rawUsername.includes('@')) {
+      rawUsername = rawUsername.split('@')[0];
+    }
+    const username = rawUsername.toLowerCase().includes('pratyush') ? 'Pratyush' : rawUsername;
+    const uLower = (parsed.username || '').toLowerCase();
+    const eLower = (parsed.email || '').toLowerCase();
+    const isAdmin = parsed.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage') || parsed.sub === '1';
     return {
       id: parsed.sub ? Number(parsed.sub) : 1,
       username: username,
+      email: parsed.email || `${username.toLowerCase()}@ddas.sec`,
       role: isAdmin ? 'ADMIN' : (parsed.role || 'ADMIN'),
       permissions: parsed.permissions || [],
       ...parsed

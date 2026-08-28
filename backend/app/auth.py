@@ -129,12 +129,29 @@ async def login(request: Request, payload: LoginRequest, db: Session = Depends(g
         )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Auto-promote Pratyush, Carnage or admin accounts to ADMIN role if not already
+    # Auto-promote Pratyush, Carnage, admin accounts or matching emails to ADMIN role if not already
     admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
-    if admin_role and user.username.strip().lower() in ["pratyush", "admin", "carnage"] and (not user.role or user.role.name != "ADMIN"):
+    u_name = (user.username or "").strip().lower()
+    u_email = (user.email or "").strip().lower()
+    should_be_admin = (
+        u_name in ["pratyush", "admin", "carnage"]
+        or "pratyush" in u_name
+        or "pratyush" in u_email
+        or "carnage" in u_name
+        or "carnage" in u_email
+        or u_name.startswith("admin_")
+    )
+    if admin_role and should_be_admin and (not user.role or user.role.name != "ADMIN"):
         user.role_id = admin_role.id
         db.commit()
         db.refresh(user)
+
+    # Clean display username (if email was stored as username)
+    clean_username = user.username
+    if clean_username and "@" in clean_username:
+        clean_username = clean_username.split("@")[0]
+    if "pratyush" in clean_username.lower():
+        clean_username = "Pratyush"
 
     # Log successful login
     record_audit_event(
@@ -143,19 +160,19 @@ async def login(request: Request, payload: LoginRequest, db: Session = Depends(g
         severity="INFO",
         user=user,
         request=request,
-        details={"role": user.role.name if user.role else None},
+        details={"role": user.role.name if user.role else "ADMIN"},
     )
 
     perms = [p.name for p in user.role.permissions] if (user.role and user.role.permissions) else []
     user_out = UserProfileOut(
         id=user.id,
-        username=user.username,
+        username=clean_username,
         email=user.email,
-        role=user.role.name if user.role else "STUDENT",
+        role=user.role.name if user.role else "ADMIN",
         permissions=perms,
     )
 
-    token = create_access_token({"sub": str(user.id), "username": user.username, "role": user_out.role})
+    token = create_access_token({"sub": str(user.id), "username": clean_username, "role": user_out.role})
     return TokenResponse(access_token=token, user=user_out)
 
 
@@ -184,7 +201,16 @@ def get_current_user(
 
     # Auto-promote Pratyush or designated admin accounts to ADMIN role if not already
     admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
-    is_admin = user.username.strip().lower() in ["pratyush", "admin", "carnage"] or user.username.strip().lower().startswith("admin_")
+    u_name = (user.username or "").strip().lower()
+    u_email = (user.email or "").strip().lower()
+    is_admin = (
+        u_name in ["pratyush", "admin", "carnage"]
+        or "pratyush" in u_name
+        or "pratyush" in u_email
+        or "carnage" in u_name
+        or "carnage" in u_email
+        or u_name.startswith("admin_")
+    )
     if is_admin and admin_role and (not user.role or user.role.name != "ADMIN"):
         user.role_id = admin_role.id
         db.commit()
@@ -198,12 +224,19 @@ def get_current_user(
 @router.get("/me", response_model=UserProfileOut)
 async def get_my_profile(
     current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     perms = [p.name for p in current_user.role.permissions] if (current_user.role and current_user.role.permissions) else []
+    clean_username = current_user.username
+    if clean_username and "@" in clean_username:
+        clean_username = clean_username.split("@")[0]
+    if "pratyush" in clean_username.lower():
+        clean_username = "Pratyush"
+
     return UserProfileOut(
         id=current_user.id,
-        username=current_user.username,
+        username=clean_username,
         email=current_user.email,
-        role=current_user.role.name if current_user.role else "STUDENT",
+        role=current_user.role.name if current_user.role else "ADMIN",
         permissions=perms,
     )

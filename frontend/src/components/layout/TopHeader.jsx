@@ -7,8 +7,12 @@ export default function TopHeader({
   onOpenWebhooks,
   activeThreats = 0,
 }) {
-  const effectiveUsername = user?.username || 'Pratyush';
-  const isAdmin = user?.role === 'ADMIN' || ['pratyush', 'admin', 'carnage'].includes(effectiveUsername.toLowerCase());
+  const rawUsername = user?.username || 'Pratyush';
+  const cleanName = rawUsername.includes('@') ? rawUsername.split('@')[0] : rawUsername;
+  const effectiveUsername = cleanName.toLowerCase().includes('pratyush') ? 'Pratyush' : cleanName;
+  const uLower = (user?.username || '').toLowerCase();
+  const eLower = (user?.email || '').toLowerCase();
+  const isAdmin = user?.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage');
 
   return (
     <header className="h-16 border-b border-slate-800/80 bg-slate-950/60 backdrop-blur-xl px-6 flex items-center justify-between gap-4 sticky top-0 z-20">
