@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CLASSIFICATIONS, getClassificationBadge } from '../../constants/classifications';
+import IngestionAnalysisModal from '../modals/IngestionAnalysisModal';
 
 export default function UploadDropzone(props) {
   const ops = props.uploadOps || props;
@@ -9,6 +10,7 @@ export default function UploadDropzone(props) {
   const [localDescription, setLocalDescription] = useState('');
   const [localIsAsync, setLocalIsAsync] = useState(false);
   const [localResult, setLocalResult] = useState(null);
+  const [showModal, setShowModal] = useState(false);
 
   const file = ops.file !== undefined && ops.file !== null ? ops.file : localFile;
   const setFile = (f) => {
@@ -38,7 +40,14 @@ export default function UploadDropzone(props) {
   const setResult = (r) => {
     setLocalResult(r);
     if (ops.setResult) ops.setResult(r);
+    if (r) setShowModal(true);
   };
+
+  useEffect(() => {
+    if (result) {
+      setShowModal(true);
+    }
+  }, [result]);
 
   const loading = ops.loading ?? props.loading ?? false;
   const onUpload = ops.handleUpload ?? props.onUpload;
@@ -51,6 +60,7 @@ export default function UploadDropzone(props) {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       setResult(null);
+      setShowModal(false);
     }
   };
 
@@ -566,6 +576,16 @@ export default function UploadDropzone(props) {
           </div>
         );
       })()}
+
+      {/* Forensic Analysis High-Impact Modal Popup */}
+      <IngestionAnalysisModal
+        isOpen={showModal && Boolean(result)}
+        onClose={() => setShowModal(false)}
+        result={result}
+        onDownload={onDownload}
+        onForceUpload={() => onUpload && onUpload(true)}
+        loading={loading}
+      />
     </div>
   );
 }
