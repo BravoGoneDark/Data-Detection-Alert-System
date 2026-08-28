@@ -104,8 +104,10 @@ export function useDatasetUpload(token, logout, fetchDatasets, feeds, qFeeds) {
       await fetchDatasets();
       if (feeds?.fetchLshStats) await feeds.fetchLshStats();
       if (feeds?.fetchAnomalies) await feeds.fetchAnomalies();
+      return data;
     } catch (err) {
       setError(err.message);
+      return null;
     } finally {
       if (!isAsyncMode) setLoading(false);
     }

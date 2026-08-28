@@ -14,6 +14,8 @@ export default function UploadDropzone(props) {
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [batchProgress, setBatchProgress] = useState(null);
+  const [modalQueue, setModalQueue] = useState([]);
+  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
 
   const file = ops.file !== undefined && ops.file !== null ? ops.file : localFile;
   const setFile = (f) => {
@@ -43,14 +45,36 @@ export default function UploadDropzone(props) {
   const setResult = (r) => {
     setLocalResult(r);
     if (ops.setResult) ops.setResult(r);
-    if (r) setShowModal(true);
+    if (r) {
+      setModalQueue([r]);
+      setCurrentQueueIndex(0);
+      setShowModal(true);
+    }
   };
 
   useEffect(() => {
-    if (result) {
+    if (result && modalQueue.length === 0) {
+      setModalQueue([result]);
+      setCurrentQueueIndex(0);
       setShowModal(true);
     }
   }, [result]);
+
+  const activeResult = modalQueue.length > 0 && currentQueueIndex < modalQueue.length
+    ? modalQueue[currentQueueIndex]
+    : result;
+
+  const handleNextOrCloseModal = () => {
+    if (modalQueue.length > 0 && currentQueueIndex + 1 < modalQueue.length) {
+      setCurrentQueueIndex((prev) => prev + 1);
+    } else {
+      setShowModal(false);
+      setModalQueue([]);
+      setCurrentQueueIndex(0);
+      setResult(null);
+      setFile(null);
+    }
+  };
 
   const loading = (ops.loading ?? props.loading ?? false) || Boolean(batchProgress);
   const onUpload = ops.handleUpload ?? props.onUpload;
@@ -70,18 +94,34 @@ export default function UploadDropzone(props) {
 
   const handleTriggerUpload = async () => {
     if (selectedFiles.length > 1) {
+      const resultsAccumulator = [];
       for (let i = 0; i < selectedFiles.length; i++) {
         const curFile = selectedFiles[i];
         setBatchProgress({ current: i + 1, total: selectedFiles.length, name: curFile.name });
         setFile(curFile);
         if (onUpload) {
-          await onUpload(false, false, curFile, classification, description);
+          const res = await onUpload(false, false, curFile, classification, description);
+          if (res) {
+            resultsAccumulator.push(res);
+          }
         }
       }
       setBatchProgress(null);
       setSelectedFiles([]);
+      if (resultsAccumulator.length > 0) {
+        setModalQueue(resultsAccumulator);
+        setCurrentQueueIndex(0);
+        setShowModal(true);
+      }
     } else {
-      if (onUpload) onUpload(false);
+      if (onUpload) {
+        const res = await onUpload(false);
+        if (res) {
+          setModalQueue([res]);
+          setCurrentQueueIndex(0);
+          setShowModal(true);
+        }
+      }
     }
   };
 
@@ -614,12 +654,13 @@ export default function UploadDropzone(props) {
 
       {/* Forensic Analysis High-Impact Modal Popup */}
       <IngestionAnalysisModal
-        isOpen={showModal && Boolean(result)}
-        onClose={() => setShowModal(false)}
-        result={result}
+        isOpen={showModal && Boolean(activeResult)}
+        onClose={handleNextOrCloseModal}
+        result={activeResult}
         onDownload={onDownload}
         onForceUpload={() => onUpload && onUpload(true)}
         loading={loading}
+        queueInfo={modalQueue.length > 1 ? { current: currentQueueIndex + 1, total: modalQueue.length } : null}
       />
     </div>
   );

@@ -9,6 +9,7 @@ export default function IngestionAnalysisModal({
   onDownload,
   onForceUpload,
   loading = false,
+  queueInfo = null,
 }) {
   if (!isOpen || !result) return null;
 
@@ -17,6 +18,7 @@ export default function IngestionAnalysisModal({
   const isExactMatch = result.match_type === 'EXACT';
   const isFuzzy = result.match_type === 'FUZZY_SIMILAR';
   const isContent = result.match_type === 'CONTENT_SIMILAR';
+  const hasQueue = queueInfo && queueInfo.total > 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
@@ -30,6 +32,19 @@ export default function IngestionAnalysisModal({
           : 'bg-slate-950/95 border-emerald-500/70 shadow-[0_0_50px_rgba(16,185,129,0.25)]'
       } space-y-5 max-h-[90vh] overflow-y-auto`}>
         
+        {/* Batch Queue Pill */}
+        {hasQueue && (
+          <div className="flex items-center justify-between px-3.5 py-1.5 rounded-xl bg-violet-950/80 border border-violet-600/60 text-violet-200 text-xs font-mono">
+            <span className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+              <strong>BATCH INGESTION QUEUE:</strong> Dataset {queueInfo.current} of {queueInfo.total}
+            </span>
+            <span className="text-violet-400 text-[11px]">
+              Closing advances to next file
+            </span>
+          </div>
+        )}
+
         {/* Top Header */}
         <div className="flex items-start justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-3">
@@ -211,9 +226,15 @@ export default function IngestionAnalysisModal({
 
           <button
             onClick={onClose}
-            className="w-full sm:w-auto py-2.5 px-6 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-semibold transition-colors cursor-pointer"
+            className={`w-full sm:w-auto py-2.5 px-6 rounded-xl font-semibold text-xs transition-all cursor-pointer ${
+              hasQueue && queueInfo.current < queueInfo.total
+                ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-[0_0_15px_rgba(139,92,246,0.35)]'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
+            }`}
           >
-            Dismiss
+            {hasQueue && queueInfo.current < queueInfo.total
+              ? `Next Ingested File (${queueInfo.current + 1} of ${queueInfo.total}) →`
+              : 'Dismiss'}
           </button>
         </div>
 
