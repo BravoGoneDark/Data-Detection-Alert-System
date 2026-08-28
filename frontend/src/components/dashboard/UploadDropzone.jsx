@@ -1,28 +1,56 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CLASSIFICATIONS, getClassificationBadge } from '../../constants/classifications';
 
 export default function UploadDropzone(props) {
   const ops = props.uploadOps || props;
-  const file = ops.file ?? props.file;
-  const setFile = ops.setFile ?? props.setFile;
-  const classification = ops.classification ?? props.classification ?? 'INTERNAL';
-  const setClassification = ops.setClassification ?? props.setClassification;
-  const description = ops.description ?? props.description ?? '';
-  const setDescription = ops.setDescription ?? props.setDescription;
+
+  const [localFile, setLocalFile] = useState(null);
+  const [localClassification, setLocalClassification] = useState('INTERNAL');
+  const [localDescription, setLocalDescription] = useState('');
+  const [localIsAsync, setLocalIsAsync] = useState(false);
+  const [localResult, setLocalResult] = useState(null);
+
+  const file = ops.file !== undefined && ops.file !== null ? ops.file : localFile;
+  const setFile = (f) => {
+    setLocalFile(f);
+    if (ops.setFile) ops.setFile(f);
+  };
+
+  const classification = ops.classification !== undefined ? ops.classification : localClassification;
+  const setClassification = (c) => {
+    setLocalClassification(c);
+    if (ops.setClassification) ops.setClassification(c);
+  };
+
+  const description = ops.description !== undefined ? ops.description : localDescription;
+  const setDescription = (d) => {
+    setLocalDescription(d);
+    if (ops.setDescription) ops.setDescription(d);
+  };
+
+  const isAsyncMode = ops.isAsyncMode !== undefined ? ops.isAsyncMode : localIsAsync;
+  const setIsAsyncMode = (a) => {
+    setLocalIsAsync(a);
+    if (ops.setIsAsyncMode) ops.setIsAsyncMode(a);
+  };
+
+  const result = ops.result !== undefined && ops.result !== null ? ops.result : localResult;
+  const setResult = (r) => {
+    setLocalResult(r);
+    if (ops.setResult) ops.setResult(r);
+  };
+
   const loading = ops.loading ?? props.loading ?? false;
-  const result = ops.result ?? props.result;
-  const setResult = ops.setResult ?? props.setResult;
   const onUpload = ops.handleUpload ?? props.onUpload;
   const onDownload = ops.handleDownload ?? props.onDownload;
-  const isAsyncMode = ops.isAsyncMode ?? props.isAsyncMode ?? false;
-  const setIsAsyncMode = ops.setIsAsyncMode ?? props.setIsAsyncMode;
   const asyncTask = ops.asyncTask ?? props.asyncTask;
   const error = ops.error ?? props.error;
 
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      if (setFile) setFile(e.target.files[0]);
-      if (setResult) setResult(null);
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      setResult(null);
     }
   };
 
