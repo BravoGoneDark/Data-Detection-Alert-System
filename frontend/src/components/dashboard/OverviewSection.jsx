@@ -1,5 +1,4 @@
-// frontend/src/components/dashboard/OverviewSection.jsx
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { motion, useScroll, useTransform, useSpring, useMotionValueEvent } from 'motion/react';
 import { Sparkles, Shield, Activity, Database, KeyRound, ChevronDown, Layers, Terminal, Radio } from 'lucide-react';
 
@@ -30,10 +29,13 @@ export default function OverviewSection({
   onOpenRedis,
   onOpenWebhooks,
   isAdmin = false,
+  initialStage = 1,
   onStageChange,
 }) {
   const containerRef = useRef(null);
-  const [activeStage, setActiveStage] = useState(1);
+  const [activeStage, setActiveStage] = useState(initialStage);
+  const isProgrammaticRef = useRef(false);
+  const scrollLockTimerRef = useRef(null);
 
   const activeThreats = anomalyStats?.active_threats ?? anomalies.filter((a) => a.status === 'ACTIVE').length;
   const quarantinedCount = quarantineStats?.active_quarantines ?? 0;
@@ -45,16 +47,32 @@ export default function OverviewSection({
     offset: ['start start', 'end end'],
   });
 
-  // 2. Smooth spring physics (balanced response)
+  // 2. Critically-damped spring physics (Zero bounce, zero oscillation)
   const progress = useSpring(scrollYProgress, {
-    stiffness: 55,
-    damping: 24,
-    mass: 0.65,
+    stiffness: 140,
+    damping: 36,
+    mass: 0.25,
     restDelta: 0.0001,
   });
 
-  // 3. Sync HUD pill highlights in exact frame-by-frame lockstep with the visual spring progress
+  // Direct mount scroll to target stage when coming from another view (prevents scrolling from 0 down)
+  useEffect(() => {
+    if (initialStage > 1 && containerRef.current) {
+      const fractions = { 1: 0.0, 2: 0.36, 3: 0.65, 4: 0.95 };
+      const frac = fractions[initialStage] || 0.0;
+      const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
+      const targetTop = containerRef.current.offsetTop + frac * scrollableHeight;
+      isProgrammaticRef.current = true;
+      window.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' });
+      setTimeout(() => {
+        isProgrammaticRef.current = false;
+      }, 120);
+    }
+  }, []);
+
+  // 3. Sync HUD pill highlights lockstep with scroll without flickering on programmatic clicks
   useMotionValueEvent(progress, 'change', (latest) => {
+    if (isProgrammaticRef.current) return;
     let nextStage = 1;
     if (latest < 0.23) {
       nextStage = 1;
@@ -102,12 +120,20 @@ export default function OverviewSection({
   const f4Y = useTransform(progress, [0.74, 0.84], [80, 0]);
   const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
 
-  // Smooth jump that immediately highlights the clicked button & scrolls smoothly
+  // Smooth jump that immediately highlights target & smoothly scrolls with 0 bounce
   const jumpToFraction = (fraction, stage) => {
     setActiveStage(stage);
+    if (onStageChange) onStageChange(stage);
+    isProgrammaticRef.current = true;
+    clearTimeout(scrollLockTimerRef.current);
+    scrollLockTimerRef.current = setTimeout(() => {
+      isProgrammaticRef.current = false;
+    }, 600);
+
     if (containerRef.current) {
-      const top = containerRef.current.offsetTop + fraction * (containerRef.current.offsetHeight - window.innerHeight);
-      window.scrollTo({ top, behavior: 'smooth' });
+      const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
+      const top = containerRef.current.offsetTop + fraction * scrollableHeight;
+      window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
     }
   };
 

@@ -30,13 +30,12 @@ export default function Sidebar({
     if (setOverviewStage) setOverviewStage(targetStage);
     if (activeView !== 'overview') {
       setActiveView('overview');
-    }
-    setTimeout(() => {
+    } else {
       const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
       if (scrollHeight > 0) {
         window.scrollTo({ top: fraction * scrollHeight, behavior: 'smooth' });
       }
-    }, 50);
+    }
   };
 
   const isOverviewActive = activeView === 'overview' && overviewStage === 1;

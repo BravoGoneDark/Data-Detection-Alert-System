@@ -194,6 +194,7 @@ function UploadPanel() {
               onOpenRedis={() => setShowRedisModal(true)}
               onOpenWebhooks={() => setShowWebhooksModal(true)}
               isAdmin={isAdmin}
+              initialStage={overviewStage}
               onStageChange={setOverviewStage}
             />
           )}
