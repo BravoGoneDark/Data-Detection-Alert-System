@@ -12,6 +12,9 @@ export default function UploadDropzone(props) {
   const [localResult, setLocalResult] = useState(null);
   const [showModal, setShowModal] = useState(false);
 
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [batchProgress, setBatchProgress] = useState(null);
+
   const file = ops.file !== undefined && ops.file !== null ? ops.file : localFile;
   const setFile = (f) => {
     setLocalFile(f);
@@ -49,18 +52,36 @@ export default function UploadDropzone(props) {
     }
   }, [result]);
 
-  const loading = ops.loading ?? props.loading ?? false;
+  const loading = (ops.loading ?? props.loading ?? false) || Boolean(batchProgress);
   const onUpload = ops.handleUpload ?? props.onUpload;
   const onDownload = ops.handleDownload ?? props.onDownload;
   const asyncTask = ops.asyncTask ?? props.asyncTask;
   const error = ops.error ?? props.error;
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
+    if (e.target.files && e.target.files.length > 0) {
+      const filesArr = Array.from(e.target.files);
+      setSelectedFiles(filesArr);
+      setFile(filesArr[0]);
       setResult(null);
       setShowModal(false);
+    }
+  };
+
+  const handleTriggerUpload = async () => {
+    if (selectedFiles.length > 1) {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const curFile = selectedFiles[i];
+        setBatchProgress({ current: i + 1, total: selectedFiles.length, name: curFile.name });
+        setFile(curFile);
+        if (onUpload) {
+          await onUpload(false, false, curFile, classification, description);
+        }
+      }
+      setBatchProgress(null);
+      setSelectedFiles([]);
+    } else {
+      if (onUpload) onUpload(false);
     }
   };
 
@@ -82,11 +103,21 @@ export default function UploadDropzone(props) {
           </div>
         )}
 
+        {batchProgress && (
+          <div className="mb-4 p-3 rounded-xl bg-violet-950/80 border border-violet-700/80 text-violet-300 text-xs font-semibold flex items-center justify-between animate-pulse">
+            <span>⚙️ Ingesting Batch File {batchProgress.current} of {batchProgress.total}: {batchProgress.name}...</span>
+            <span className="font-mono text-xs">{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+          </div>
+        )}
+
         <div className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">File</label>
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              File {selectedFiles.length > 1 && `(${selectedFiles.length} files selected)`}
+            </label>
             <input
               type="file"
+              multiple
               onChange={handleFileChange}
               className="block w-full text-xs text-slate-300
                          file:mr-3 file:py-2 file:px-3
@@ -95,11 +126,15 @@ export default function UploadDropzone(props) {
                          file:cursor-pointer hover:file:bg-cyan-500
                          border border-slate-700/80 rounded-lg bg-slate-950/60 cursor-pointer"
             />
-            {file && (
+            {selectedFiles.length > 1 ? (
+              <p className="text-[11px] text-violet-400 mt-1 font-mono">
+                Selected {selectedFiles.length} files: {selectedFiles.map(f => f.name).join(', ')}
+              </p>
+            ) : file ? (
               <p className="text-[11px] text-cyan-400 mt-1 font-mono">
                 Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)
               </p>
-            )}
+            ) : null}
           </div>
 
           <div>
@@ -174,13 +209,13 @@ export default function UploadDropzone(props) {
           )}
 
           <button
-            onClick={() => onUpload && onUpload(false)}
+            onClick={handleTriggerUpload}
             disabled={!file || loading}
             className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800
                        disabled:cursor-not-allowed text-white text-sm font-medium
                        py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(0,194,222,0.2)] cursor-pointer"
           >
-            {loading ? 'Processing & Analyzing Text...' : isAsyncMode ? '⚡ Queue in Background' : 'Upload & Analyze'}
+            {loading ? 'Processing & Analyzing Text...' : selectedFiles.length > 1 ? `⚡ Ingest All ${selectedFiles.length} Datasets` : isAsyncMode ? '⚡ Queue in Background' : 'Upload & Analyze'}
           </button>
         </div>
       </div>
