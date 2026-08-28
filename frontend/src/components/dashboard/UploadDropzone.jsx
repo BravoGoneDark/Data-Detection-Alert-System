@@ -1,26 +1,28 @@
 import React from 'react';
 import { CLASSIFICATIONS, getClassificationBadge } from '../../constants/classifications';
 
-export default function UploadDropzone({
-  file,
-  setFile,
-  classification,
-  setClassification,
-  description,
-  setDescription,
-  loading,
-  result,
-  setResult,
-  onUpload,
-  onDownload,
-  isAsyncMode = false,
-  setIsAsyncMode,
-  asyncTask = null,
-}) {
+export default function UploadDropzone(props) {
+  const ops = props.uploadOps || props;
+  const file = ops.file ?? props.file;
+  const setFile = ops.setFile ?? props.setFile;
+  const classification = ops.classification ?? props.classification ?? 'INTERNAL';
+  const setClassification = ops.setClassification ?? props.setClassification;
+  const description = ops.description ?? props.description ?? '';
+  const setDescription = ops.setDescription ?? props.setDescription;
+  const loading = ops.loading ?? props.loading ?? false;
+  const result = ops.result ?? props.result;
+  const setResult = ops.setResult ?? props.setResult;
+  const onUpload = ops.handleUpload ?? props.onUpload;
+  const onDownload = ops.handleDownload ?? props.onDownload;
+  const isAsyncMode = ops.isAsyncMode ?? props.isAsyncMode ?? false;
+  const setIsAsyncMode = ops.setIsAsyncMode ?? props.setIsAsyncMode;
+  const asyncTask = ops.asyncTask ?? props.asyncTask;
+  const error = ops.error ?? props.error;
+
   const handleFileChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
-      setResult(null);
+      if (setFile) setFile(e.target.files[0]);
+      if (setResult) setResult(null);
     }
   };
 
@@ -33,6 +35,15 @@ export default function UploadDropzone({
           Files are deduplicated via Content-Addressable Storage (SHA-256) & LSH.
         </p>
 
+        {error && (
+          <div className="mb-4 p-3 rounded-xl bg-rose-950/80 border border-rose-700/80 text-rose-300 text-xs font-semibold flex items-center justify-between animate-fadeIn">
+            <span>⚠️ {error}</span>
+            {ops.setError && (
+              <button onClick={() => ops.setError(null)} className="text-slate-400 hover:text-white text-xs ml-3 cursor-pointer">✕</button>
+            )}
+          </div>
+        )}
+
         <div className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">File</label>
@@ -44,16 +55,21 @@ export default function UploadDropzone({
                          file:rounded-lg file:border-0
                          file:bg-cyan-600 file:text-white
                          file:cursor-pointer hover:file:bg-cyan-500
-                         border border-slate-700/80 rounded-lg bg-slate-950/60"
+                         border border-slate-700/80 rounded-lg bg-slate-950/60 cursor-pointer"
             />
+            {file && (
+              <p className="text-[11px] text-cyan-400 mt-1 font-mono">
+                Selected: {file.name} ({(file.size / 1024).toFixed(1)} KB)
+              </p>
+            )}
           </div>
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">Classification Level</label>
             <select
               value={classification}
-              onChange={(e) => setClassification(e.target.value)}
-              className="w-full text-xs bg-slate-950/80 border border-slate-700/80 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500"
+              onChange={(e) => setClassification && setClassification(e.target.value)}
+              className="w-full text-xs bg-slate-950/80 border border-slate-700/80 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
             >
               {CLASSIFICATIONS.map((c) => (
                 <option key={c.value} value={c.value}>
@@ -72,13 +88,16 @@ export default function UploadDropzone({
               type="text"
               placeholder="e.g. Research dataset benchmark v1"
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription && setDescription(e.target.value)}
               className="w-full text-xs bg-slate-950/80 border border-slate-700/80 rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-cyan-500"
             />
           </div>
 
           {/* Stage 13: Async Background Queue Toggle */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+          <div
+            onClick={() => setIsAsyncMode && setIsAsyncMode(!isAsyncMode)}
+            className="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800 hover:border-slate-700 transition-colors cursor-pointer"
+          >
             <div className="flex items-center gap-2">
               <span className="text-amber-400 font-bold text-sm">⚡</span>
               <div>
@@ -89,8 +108,11 @@ export default function UploadDropzone({
             <input
               type="checkbox"
               checked={isAsyncMode}
-              onChange={(e) => setIsAsyncMode && setIsAsyncMode(e.target.checked)}
-              className="h-4 w-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500 focus:ring-offset-slate-900 cursor-pointer"
+              onChange={(e) => {
+                e.stopPropagation();
+                if (setIsAsyncMode) setIsAsyncMode(e.target.checked);
+              }}
+              className="h-4 w-4 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-500 cursor-pointer accent-amber-500"
             />
           </div>
 
@@ -114,11 +136,11 @@ export default function UploadDropzone({
           )}
 
           <button
-            onClick={() => onUpload(false)}
+            onClick={() => onUpload && onUpload(false)}
             disabled={!file || loading}
             className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-800
                        disabled:cursor-not-allowed text-white text-sm font-medium
-                       py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(0,194,222,0.2)]"
+                       py-2.5 rounded-lg transition-all shadow-[0_0_15px_rgba(0,194,222,0.2)] cursor-pointer"
           >
             {loading ? 'Processing & Analyzing Text...' : isAsyncMode ? '⚡ Queue in Background' : 'Upload & Analyze'}
           </button>
