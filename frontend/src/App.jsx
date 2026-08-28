@@ -206,6 +206,7 @@ function UploadPanel() {
                 loading={loadingDatasets}
                 onRefresh={fetchDatasets}
                 token={token}
+                isAdmin={isAdmin}
                 isQuarantined={qFeeds.myQuarantine?.is_quarantined}
                 quarantineRiskScore={qFeeds.myQuarantine?.risk_score}
               />

@@ -1,6 +1,7 @@
 # backend/app/routers/datasets.py
 import hashlib
 import json
+from pydantic import BaseModel
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -397,5 +398,116 @@ async def download_dataset(
         filename=dataset.filename,
         media_type="application/octet-stream",
     )
+
+
+@router.delete("/{dataset_id}")
+def delete_dataset(
+    request: Request,
+    dataset_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:delete")),
+):
+    """
+    Deletes a dataset from the platform. Requires 'dataset:delete' permission (ADMIN).
+    Cascades LSH bucket removal, invalidates Redis caches, and logs an immutable SIEM audit event.
+    """
+    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    if not dataset:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+
+    filename = dataset.filename
+    classification = dataset.classification
+    sha256 = dataset.sha256
+    storage_path = dataset.storage_path
+
+    # Record Audit Event before deletion
+    record_audit_event(
+        db,
+        event_type="DATASET_DELETE",
+        severity="WARNING",
+        user=current_user,
+        dataset=dataset,
+        classification=classification,
+        request=request,
+        details={
+            "dataset_id": dataset_id,
+            "filename": filename,
+            "sha256": sha256,
+            "classification": classification,
+            "deleted_by": current_user.username,
+        },
+    )
+
+    # Delete dataset record (cascades LSH buckets)
+    db.delete(dataset)
+    db.commit()
+
+    # Invalidate Redis Caches
+    delete_cache_pattern("ddas:cache:datasets*")
+    delete_cache_key("ddas:cache:lsh:stats")
+
+    return {
+        "detail": f"Dataset '{filename}' (ID {dataset_id}) successfully deleted.",
+        "dataset_id": dataset_id,
+        "filename": filename,
+    }
+
+
+class BulkDeleteRequest(BaseModel):
+    dataset_ids: list[int]
+
+
+@router.post("/bulk-delete")
+def bulk_delete_datasets(
+    request: Request,
+    payload: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission("dataset:delete")),
+):
+    """
+    Bulk deletes multiple datasets in a single transaction. Requires 'dataset:delete' (ADMIN).
+    Cascades LSH bucket removals, invalidates Redis caches, and logs an immutable SIEM audit event.
+    """
+    if not payload.dataset_ids:
+        raise HTTPException(status_code=400, detail="No dataset IDs provided for deletion")
+
+    datasets = db.query(Dataset).filter(Dataset.id.in_(payload.dataset_ids)).all()
+    if not datasets:
+        raise HTTPException(status_code=404, detail="No matching datasets found to delete")
+
+    deleted_info = [
+        {"id": d.id, "filename": d.filename, "sha256": d.sha256, "classification": d.classification}
+        for d in datasets
+    ]
+    deleted_count = len(datasets)
+
+    # Record Audit Event
+    record_audit_event(
+        db,
+        event_type="DATASET_BULK_DELETE",
+        severity="WARNING",
+        user=current_user,
+        request=request,
+        details={
+            "deleted_count": deleted_count,
+            "deleted_datasets": deleted_info,
+            "deleted_by": current_user.username,
+        },
+    )
+
+    # Delete datasets (cascades LSH buckets)
+    for d in datasets:
+        db.delete(d)
+    db.commit()
+
+    # Invalidate Redis Caches
+    delete_cache_pattern("ddas:cache:datasets*")
+    delete_cache_key("ddas:cache:lsh:stats")
+
+    return {
+        "detail": f"Successfully deleted {deleted_count} dataset{'s' if deleted_count != 1 else ''}.",
+        "deleted_count": deleted_count,
+        "deleted_ids": [info["id"] for info in deleted_info],
+    }
 
 

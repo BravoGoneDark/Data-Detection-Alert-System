@@ -474,6 +474,7 @@ export default function OverviewSection({
               loading={loadingDatasets}
               onRefresh={fetchDatasets}
               token={token}
+              isAdmin={isAdmin}
               isQuarantined={myQuarantine?.is_quarantined}
               quarantineRiskScore={myQuarantine?.risk_score}
             />
