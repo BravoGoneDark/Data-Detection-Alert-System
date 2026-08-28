@@ -35,63 +35,27 @@ export default function OverviewSection({
 }) {
   const containerRef = useRef(null);
   const [activeStage, setActiveStage] = useState(initialStage);
-  const isProgrammaticRef = useRef(false);
-  const scrollLockTimerRef = useRef(null);
 
   const activeThreats = anomalyStats?.active_threats ?? anomalies.filter((a) => a.status === 'ACTIVE').length;
   const quarantinedCount = quarantineStats?.active_quarantines ?? 0;
   const hitRatio = redisStats?.hit_ratio_percent ?? 99.7;
 
-  // 1. Balanced 400vh track for smooth, continuous mousepad/trackpad scrolling overlay
+  // 1. Balanced 400vh track for smooth, natural overlay pacing
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start start', 'end end'],
   });
 
-  // 2. High-speed critically-damped spring physics
+  // 2. Smooth spring physics (balanced response)
   const progress = useSpring(scrollYProgress, {
-    stiffness: 160,
-    damping: 32,
-    mass: 0.2,
+    stiffness: 55,
+    damping: 24,
+    mass: 0.65,
     restDelta: 0.0001,
   });
 
-  // Direct jump function that sets the spring immediately to bypass intermediate frames on clicks
-  const jumpToFraction = (fraction, stage) => {
-    setActiveStage(stage);
-    if (onStageChange) onStageChange(stage);
-    isProgrammaticRef.current = true;
-    clearTimeout(scrollLockTimerRef.current);
-    scrollLockTimerRef.current = setTimeout(() => {
-      isProgrammaticRef.current = false;
-    }, 150);
-
-    // Snap spring value directly to target so intermediate frames are completely skipped!
-    if (typeof progress.jump === 'function') {
-      progress.jump(fraction);
-    } else if (typeof progress.set === 'function') {
-      progress.set(fraction);
-    }
-
-    if (containerRef.current) {
-      const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
-      const top = containerRef.current.offsetTop + fraction * scrollableHeight;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
-    }
-  };
-
-  // Sync with initialStage when coming from sidebar or another view
-  useEffect(() => {
-    if (initialStage && containerRef.current) {
-      const fractions = { 1: 0.0, 2: 0.36, 3: 0.65, 4: 0.95 };
-      const frac = fractions[initialStage] ?? 0.0;
-      jumpToFraction(frac, initialStage);
-    }
-  }, [initialStage]);
-
-  // 3. Sync HUD pill highlights in exact lockstep during continuous mouse/trackpad scrolling
+  // 3. Sync HUD pill highlights in exact frame-by-frame lockstep with the visual spring progress
   useMotionValueEvent(progress, 'change', (latest) => {
-    if (isProgrammaticRef.current) return;
     let nextStage = 1;
     if (latest < 0.23) {
       nextStage = 1;
@@ -139,12 +103,26 @@ export default function OverviewSection({
   const f4Y = useTransform(progress, [0.74, 0.84], [80, 0]);
   const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
 
-  const hudItems = [
-    { stage: 1, fraction: 0.0, label: '01 Showcase' },
-    { stage: 2, fraction: 0.36, label: '02 Analytics' },
-    { stage: 3, fraction: 0.65, label: '03 Telemetry' },
-    { stage: 4, fraction: 0.95, label: '04 Inventory' },
-  ];
+  // Immediate jump on taskbar or HUD button click
+  const jumpToFraction = (fraction, stage) => {
+    setActiveStage(stage);
+    if (onStageChange) onStageChange(stage);
+    if (typeof progress.jump === 'function') {
+      progress.jump(fraction);
+    }
+    if (containerRef.current) {
+      const top = containerRef.current.offsetTop + fraction * (containerRef.current.offsetHeight - window.innerHeight);
+      window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    }
+  };
+
+  useEffect(() => {
+    if (initialStage && containerRef.current) {
+      const fractions = { 1: 0.0, 2: 0.36, 3: 0.65, 4: 0.95 };
+      const frac = fractions[initialStage] ?? 0.0;
+      jumpToFraction(frac, initialStage);
+    }
+  }, [initialStage]);
 
   return (
     <div ref={containerRef} className="relative w-full h-[400vh]">
@@ -173,11 +151,16 @@ export default function OverviewSection({
           </div>
 
           <div className="flex items-center gap-2">
-            {hudItems.map((item) => (
+            {[
+              { stage: 1, fraction: 0.0, label: '01 Showcase' },
+              { stage: 2, fraction: 0.36, label: '02 Analytics' },
+              { stage: 3, fraction: 0.65, label: '03 Telemetry' },
+              { stage: 4, fraction: 0.95, label: '04 Inventory' },
+            ].map((item) => (
               <button
                 key={item.stage}
                 onClick={() => jumpToFraction(item.fraction, item.stage)}
-                className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all duration-200 cursor-pointer ${
+                className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all duration-300 cursor-pointer ${
                   activeStage === item.stage
                     ? 'bg-violet-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.6)] scale-105'
                     : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
@@ -492,12 +475,15 @@ export default function OverviewSection({
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Multi-file bulk selection, SHA-256 sharded inventory, and instantaneous dataset downloads
+                  Deduplicated dataset inventory with authenticated CAS downloads & role clearance filtering
                 </p>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 font-bold">
-                {datasets.length} ITEMS
-              </span>
+              <button
+                onClick={onOpenUpload}
+                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-lg transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>⚡</span> Upload Dataset
+              </button>
             </div>
 
             <DatasetInventory
@@ -513,7 +499,6 @@ export default function OverviewSection({
         </motion.div>
 
       </div>
-
     </div>
   );
 }
