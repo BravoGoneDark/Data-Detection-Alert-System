@@ -40,7 +40,7 @@ export default function OverviewSection({
   const quarantinedCount = quarantineStats?.active_quarantines ?? 0;
   const hitRatio = redisStats?.hit_ratio_percent ?? 99.7;
 
-  // 1. Balanced 400vh track for smooth, natural overlay pacing
+  // 1. Balanced 350vh track for fast, responsive pacing
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start start', 'end end'],
@@ -48,20 +48,20 @@ export default function OverviewSection({
 
   // 2. Ultra-silky spring physics (balanced fluid response)
   const progress = useSpring(scrollYProgress, {
-    stiffness: 85,
-    damping: 25,
-    mass: 0.35,
+    stiffness: 90,
+    damping: 26,
+    mass: 0.32,
     restDelta: 0.0001,
   });
 
   // 3. Sync HUD pill highlights in exact frame-by-frame lockstep with the visual spring progress
   useMotionValueEvent(progress, 'change', (latest) => {
     let nextStage = 1;
-    if (latest < 0.23) {
+    if (latest < 0.22) {
       nextStage = 1;
-    } else if (latest >= 0.23 && latest < 0.49) {
+    } else if (latest >= 0.22 && latest < 0.52) {
       nextStage = 2;
-    } else if (latest >= 0.49 && latest < 0.75) {
+    } else if (latest >= 0.52 && latest < 0.80) {
       nextStage = 3;
     } else {
       nextStage = 4;
@@ -74,34 +74,35 @@ export default function OverviewSection({
   const watermarkOpacity = useTransform(progress, [0, 0.4, 0.7, 1], [0.08, 0.15, 0.15, 0.08]);
   const watermarkScale = useTransform(progress, [0, 1], [0.95, 1.08]);
 
-  // --- FRAME 1: HERO ARCHITECTURE SHOWCASE (0.00 -> 0.24) ---
-  const f1Opacity = useTransform(progress, [0, 0.14, 0.24], [1, 0.9, 0]);
-  const f1Scale = useTransform(progress, [0, 0.24], [1, 0.92]);
-  const f1Y = useTransform(progress, [0, 0.24], [0, -45]);
-  const f1PointerEvents = useTransform(progress, (p) => (p < 0.20 ? 'auto' : 'none'));
+  // --- FRAME 1: HERO ARCHITECTURE SHOWCASE (0.00 -> 0.20) ---
+  // Starts movement later (at 0.08) and exits smoothly
+  const f1Opacity = useTransform(progress, [0, 0.08, 0.20], [1, 0.95, 0]);
+  const f1Scale = useTransform(progress, [0.08, 0.20], [1, 0.92]);
+  const f1Y = useTransform(progress, [0.08, 0.20], [0, -45]);
+  const f1PointerEvents = useTransform(progress, (p) => (p < 0.16 ? 'auto' : 'none'));
 
-  // --- FRAME 2: 3 FLOATING ANALYTICS CARDS (0.14 -> 0.58) ---
-  const f2Opacity = useTransform(progress, [0.14, 0.24, 0.48, 0.58], [0, 1, 1, 0]);
-  const f2Scale = useTransform(progress, [0.14, 0.26, 0.48, 0.58], [0.90, 1, 1, 0.90]);
-  const f2Y = useTransform(progress, [0.14, 0.26, 0.48, 0.58], [60, 0, 0, -45]);
-  const f2PointerEvents = useTransform(progress, (p) => (p >= 0.18 && p <= 0.54 ? 'auto' : 'none'));
+  // --- FRAME 2: 3 FLOATING ANALYTICS CARDS (0.10 -> 0.54) ---
+  const f2Opacity = useTransform(progress, [0.10, 0.22, 0.44, 0.54], [0, 1, 1, 0]);
+  const f2Scale = useTransform(progress, [0.10, 0.24, 0.44, 0.54], [0.90, 1, 1, 0.90]);
+  const f2Y = useTransform(progress, [0.10, 0.24, 0.44, 0.54], [55, 0, 0, -45]);
+  const f2PointerEvents = useTransform(progress, (p) => (p >= 0.16 && p <= 0.48 ? 'auto' : 'none'));
 
   // Frame 2 Floating Micro-Offsets
-  const card1Offset = useTransform(progress, [0.18, 0.36], [-14, 0]);
-  const card2Offset = useTransform(progress, [0.18, 0.36], [14, 0]);
-  const card3Offset = useTransform(progress, [0.18, 0.36], [-14, 0]);
+  const card1Offset = useTransform(progress, [0.15, 0.33], [-14, 0]);
+  const card2Offset = useTransform(progress, [0.15, 0.33], [14, 0]);
+  const card3Offset = useTransform(progress, [0.15, 0.33], [-14, 0]);
 
-  // --- FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (0.48 -> 0.84) ---
-  const f3Opacity = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [0, 1, 1, 0]);
-  const f3Scale = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [0.90, 1, 1, 0.90]);
-  const f3Y = useTransform(progress, [0.48, 0.58, 0.74, 0.84], [60, 0, 0, -45]);
-  const f3PointerEvents = useTransform(progress, (p) => (p >= 0.50 && p <= 0.80 ? 'auto' : 'none'));
+  // --- FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (0.44 -> 0.84) ---
+  const f3Opacity = useTransform(progress, [0.44, 0.54, 0.74, 0.84], [0, 1, 1, 0]);
+  const f3Scale = useTransform(progress, [0.44, 0.56, 0.74, 0.84], [0.90, 1, 1, 0.90]);
+  const f3Y = useTransform(progress, [0.44, 0.56, 0.74, 0.84], [55, 0, 0, -45]);
+  const f3PointerEvents = useTransform(progress, (p) => (p >= 0.48 && p <= 0.78 ? 'auto' : 'none'));
 
   // --- FRAME 4: CAS REPOSITORY & DATASET INVENTORY (0.74 -> 1.00) ---
   const f4Opacity = useTransform(progress, [0.74, 0.84], [0, 1]);
   const f4Scale = useTransform(progress, [0.74, 0.84], [0.90, 1]);
-  const f4Y = useTransform(progress, [0.74, 0.84], [60, 0]);
-  const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
+  const f4Y = useTransform(progress, [0.74, 0.84], [55, 0]);
+  const f4PointerEvents = useTransform(progress, (p) => (p >= 0.78 ? 'auto' : 'none'));
 
   // Immediate jump on taskbar or HUD button click
   const jumpToFraction = (fraction, stage) => {
@@ -118,14 +119,14 @@ export default function OverviewSection({
 
   useEffect(() => {
     if (initialStage && containerRef.current) {
-      const fractions = { 1: 0.0, 2: 0.36, 3: 0.65, 4: 0.95 };
+      const fractions = { 1: 0.0, 2: 0.33, 3: 0.66, 4: 0.95 };
       const frac = fractions[initialStage] ?? 0.0;
       jumpToFraction(frac, initialStage);
     }
   }, [initialStage]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-[400vh]">
+    <div ref={containerRef} className="relative w-full h-[350vh]">
       
       {/* STATIONARY VIEWPORT STAGE (STICKY AT TOP-20) */}
       <div className="sticky top-20 w-full min-h-[calc(100vh-6rem)] flex flex-col justify-start overflow-hidden px-2 pt-2 pb-6 select-none">
@@ -153,8 +154,8 @@ export default function OverviewSection({
           <div className="flex items-center gap-2">
             {[
               { stage: 1, fraction: 0.0, label: '01 Showcase' },
-              { stage: 2, fraction: 0.36, label: '02 Analytics' },
-              { stage: 3, fraction: 0.65, label: '03 Telemetry' },
+              { stage: 2, fraction: 0.33, label: '02 Analytics' },
+              { stage: 3, fraction: 0.66, label: '03 Telemetry' },
               { stage: 4, fraction: 0.95, label: '04 Inventory' },
             ].map((item) => (
               <button
