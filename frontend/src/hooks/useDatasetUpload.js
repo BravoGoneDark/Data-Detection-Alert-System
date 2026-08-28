@@ -64,16 +64,10 @@ export function useDatasetUpload(token, logout, fetchDatasets, feeds, qFeeds) {
                 clearInterval(pollTimer);
                 setLoading(false);
                 if (taskData.result) {
-                  if (taskData.result.duplicate && !isForce) {
-                    setResult(taskData.result);
-                  } else {
-                    setResult(null);
-                    setFile(null);
-                    setDescription('');
-                    await fetchDatasets();
-                    if (feeds?.fetchLshStats) await feeds.fetchLshStats();
-                    if (feeds?.fetchAnomalies) await feeds.fetchAnomalies();
-                  }
+                  setResult(taskData.result);
+                  await fetchDatasets();
+                  if (feeds?.fetchLshStats) await feeds.fetchLshStats();
+                  if (feeds?.fetchAnomalies) await feeds.fetchAnomalies();
                 }
               } else if (taskData.status === 'FAILED' || taskData.status === 'CANCELLED') {
                 clearInterval(pollTimer);
@@ -106,17 +100,10 @@ export function useDatasetUpload(token, logout, fetchDatasets, feeds, qFeeds) {
       }
 
       const data = await response.json();
-
-      if (data.duplicate && !isForce) {
-        setResult(data);
-      } else {
-        setResult(null);
-        setFile(null);
-        setDescription('');
-        await fetchDatasets();
-        if (feeds?.fetchLshStats) await feeds.fetchLshStats();
-        if (feeds?.fetchAnomalies) await feeds.fetchAnomalies();
-      }
+      setResult(data);
+      await fetchDatasets();
+      if (feeds?.fetchLshStats) await feeds.fetchLshStats();
+      if (feeds?.fetchAnomalies) await feeds.fetchAnomalies();
     } catch (err) {
       setError(err.message);
     } finally {

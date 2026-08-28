@@ -395,16 +395,144 @@ export default function UploadDropzone(props) {
               <button
                 onClick={() => onUpload(true)}
                 disabled={loading}
-                className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs transition-colors"
+                className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs transition-colors cursor-pointer"
               >
                 ⚡ Proceed Anyway (Register as Variant)
               </button>
 
               <button
-                onClick={() => { setResult(null); setFile(null); }}
-                className="w-full py-1.5 text-center text-xs text-slate-500 hover:text-slate-400 transition-colors"
+                onClick={() => { setResult(null); if (setFile) setFile(null); }}
+                className="w-full py-1.5 text-center text-xs text-slate-500 hover:text-slate-400 transition-colors cursor-pointer"
               >
                 Cancel / Choose Another File
+              </button>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Unique Ingestion Success Forensic Card */}
+      {(() => {
+        if (!result || result.duplicate || !result.id) return null;
+
+        return (
+          <div className="rounded-2xl p-6 space-y-4 shadow-xl backdrop-blur-md bg-emerald-950/40 border border-emerald-500/60 shadow-[0_0_30px_rgba(16,185,129,0.15)] animate-fadeIn">
+            {/* Header with Match Type Badge */}
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="text-2xl">🛡️</span>
+                <div>
+                  <h3 className="font-semibold text-base text-white flex items-center gap-2">
+                    <span>Unique Dataset Verified & Ingested</span>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-900/80 text-emerald-300 border border-emerald-600 font-mono">
+                      #{result.id}
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Content-Addressable Storage (CAS) committed with zero duplicate collisions.
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase border bg-emerald-900/80 text-emerald-300 border-emerald-500/60 shadow-[0_0_10px_rgba(16,185,129,0.3)]">
+                MATCH TYPE: UNIQUE
+              </span>
+            </div>
+
+            {/* Cryptographic & Similarity Metrics */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 space-y-3 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Filename:</span>
+                <span className="font-mono text-emerald-200 font-bold">{result.filename}</span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">SHA-256 Digest:</span>
+                <span className="font-mono text-cyan-300 text-[11px] truncate max-w-[280px] sm:max-w-[420px]" title={result.sha256}>
+                  {result.sha256}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">SimHash Fingerprint (64-Bit):</span>
+                <span className="font-mono text-violet-300 text-[11px]">
+                  {result.simhash || '0x0000000000000000'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center py-1 border-b border-slate-800/80">
+                <span className="text-slate-400">Classification & Payload:</span>
+                <div className="flex items-center gap-2 font-mono">
+                  <span className={`px-2 py-0.5 rounded text-[10px] border ${getClassificationBadge(result.classification)}`}>
+                    {result.classification}
+                  </span>
+                  <span className="text-slate-300 text-[11px]">
+                    {(result.size_bytes / 1024).toFixed(1)} KB {result.row_count ? `• ${result.row_count} rows × ${result.col_count} cols` : ''}
+                  </span>
+                </div>
+              </div>
+
+              {/* Extracted Columns */}
+              {result.extracted_columns && result.extracted_columns.length > 0 && (
+                <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] text-slate-400 uppercase tracking-wider font-mono">
+                    <span>Extracted Columns ({result.extracted_columns.length})</span>
+                    <span>{result.row_count !== null ? `${result.row_count} rows` : ''}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {result.extracted_columns.map((col) => (
+                      <span
+                        key={col}
+                        className="px-1.5 py-0.5 rounded text-[10px] font-mono border bg-emerald-950/80 text-emerald-300 border-emerald-700/60"
+                      >
+                        {col} ✓
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Top TF-IDF Keywords */}
+              {result.top_keywords && result.top_keywords.length > 0 && (
+                <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                  <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">
+                    Top TF-IDF Extracted Keywords:
+                  </span>
+                  <div className="flex flex-wrap gap-1">
+                    {result.top_keywords.map((kw) => (
+                      <span
+                        key={kw}
+                        className="px-2 py-0.5 rounded-full text-[10px] font-mono border bg-violet-950/80 text-violet-300 border-violet-700/60"
+                      >
+                        #{kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Text Preview */}
+              {result.text_preview && (
+                <div className="pt-2 border-t border-slate-800/80 space-y-1">
+                  <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Ingested Text Preview:</span>
+                  <p className="text-[11px] font-mono text-slate-300 bg-slate-900/90 p-2 rounded border border-slate-800 max-h-20 overflow-y-auto leading-relaxed">
+                    {result.text_preview}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="pt-1 flex items-center gap-3">
+              {onDownload && (
+                <button
+                  onClick={() => onDownload(result.id, result.filename)}
+                  className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-all shadow-[0_0_12px_rgba(16,185,129,0.25)] flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  ⬇ Download Verified Dataset
+                </button>
+              )}
+              <button
+                onClick={() => { setResult(null); if (setFile) setFile(null); }}
+                className="py-2 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs transition-colors cursor-pointer"
+              >
+                ✕ Dismiss / Ingest Next File
               </button>
             </div>
           </div>
