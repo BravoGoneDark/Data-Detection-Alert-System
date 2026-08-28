@@ -1,5 +1,5 @@
 // frontend/src/hooks/useQuarantineFeeds.js
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { API_URL } from '../constants/classifications';
 
 export function useQuarantineFeeds(token) {
@@ -10,6 +10,23 @@ export function useQuarantineFeeds(token) {
   const [quarantineStatusFilter, setQuarantineStatusFilter] = useState('');
   const [quarantineUserFilter, setQuarantineUserFilter] = useState('');
 
+  // Keep persistent refs to prevent stale closure wiping when background sync runs
+  const statusFilterRef = useRef(quarantineStatusFilter);
+  const userFilterRef = useRef(quarantineUserFilter);
+  const tokenRef = useRef(token);
+
+  useEffect(() => {
+    statusFilterRef.current = quarantineStatusFilter;
+  }, [quarantineStatusFilter]);
+
+  useEffect(() => {
+    userFilterRef.current = quarantineUserFilter;
+  }, [quarantineUserFilter]);
+
+  useEffect(() => {
+    tokenRef.current = token;
+  }, [token]);
+
   // Current logged in user quarantine state
   const [myQuarantine, setMyQuarantine] = useState({ is_quarantined: false, record: null });
 
@@ -19,10 +36,11 @@ export function useQuarantineFeeds(token) {
   const [testResult, setTestResult] = useState(null);
 
   const fetchMyQuarantineStatus = async () => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     try {
       const res = await fetch(`${API_URL}/quarantine/status`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -34,20 +52,23 @@ export function useQuarantineFeeds(token) {
   };
 
   const fetchQuarantines = async (silent = false) => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     if (!silent) setLoadingQuarantine(true);
     try {
       const params = new URLSearchParams();
-      if (quarantineStatusFilter) params.append('status', quarantineStatusFilter);
-      if (quarantineUserFilter) params.append('username', quarantineUserFilter);
+      const currentStatus = statusFilterRef.current;
+      const currentUsername = userFilterRef.current;
+      if (currentStatus) params.append('status', currentStatus);
+      if (currentUsername) params.append('username', currentUsername);
       params.append('limit', '50');
 
       const [listRes, statsRes] = await Promise.all([
         fetch(`${API_URL}/admin/quarantine?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
         fetch(`${API_URL}/admin/quarantine/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
       ]);
 

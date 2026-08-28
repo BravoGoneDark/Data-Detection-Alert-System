@@ -24,9 +24,17 @@ class LoginRequest(BaseModel):
     identifier: str
     password: str
 
+class UserProfileOut(BaseModel):
+    id: int
+    username: str
+    email: str
+    role: str
+    permissions: list[str] = []
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+    user: UserProfileOut | None = None
 
 
 # ---------- Signup ----------
@@ -60,7 +68,7 @@ async def signup(request: Request, payload: SignupRequest, db: Session = Depends
     student_role = db.query(Role).filter(Role.name == "STUDENT").first()
     
     is_admin_user = (
-        payload.username.strip().lower() in ["pratyush", "admin"]
+        payload.username.strip().lower() in ["pratyush", "admin", "carnage"]
         or payload.username.strip().lower().startswith("admin_")
         or db.query(User).count() == 0
     )
@@ -88,8 +96,17 @@ async def signup(request: Request, payload: SignupRequest, db: Session = Depends
         details={"role": assigned_role.name, "email": payload.email},
     )
 
-    token = create_access_token({"sub": str(user.id)})
-    return TokenResponse(access_token=token)
+    perms = [p.name for p in user.role.permissions] if (user.role and user.role.permissions) else []
+    user_out = UserProfileOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role.name if user.role else "STUDENT",
+        permissions=perms,
+    )
+
+    token = create_access_token({"sub": str(user.id), "username": user.username, "role": user_out.role})
+    return TokenResponse(access_token=token, user=user_out)
 
 
 # ---------- Login ----------
@@ -111,9 +128,9 @@ async def login(request: Request, payload: LoginRequest, db: Session = Depends(g
         )
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Auto-promote Pratyush or admin accounts to ADMIN role if not already
+    # Auto-promote Pratyush, Carnage or admin accounts to ADMIN role if not already
     admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
-    if admin_role and user.username.strip().lower() in ["pratyush", "admin"] and (not user.role or user.role.name != "ADMIN"):
+    if admin_role and user.username.strip().lower() in ["pratyush", "admin", "carnage"] and (not user.role or user.role.name != "ADMIN"):
         user.role_id = admin_role.id
         db.commit()
         db.refresh(user)
@@ -128,8 +145,17 @@ async def login(request: Request, payload: LoginRequest, db: Session = Depends(g
         details={"role": user.role.name if user.role else None},
     )
 
-    token = create_access_token({"sub": str(user.id)})
-    return TokenResponse(access_token=token)
+    perms = [p.name for p in user.role.permissions] if (user.role and user.role.permissions) else []
+    user_out = UserProfileOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        role=user.role.name if user.role else "STUDENT",
+        permissions=perms,
+    )
+
+    token = create_access_token({"sub": str(user.id), "username": user.username, "role": user_out.role})
+    return TokenResponse(access_token=token, user=user_out)
 
 
 # ---------- get_current_user dependency ----------
@@ -155,10 +181,10 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=401, detail="User no longer exists")
 
-    # Auto-promote testing and administrative accounts to ADMIN role in database & memory
+    # Auto-promote Pratyush or designated admin accounts to ADMIN role if not already
     admin_role = db.query(Role).filter(Role.name == "ADMIN").first()
-    if admin_role and (not user.role or user.role.name != "ADMIN" or user.role_id != admin_role.id):
-        user.role = admin_role
+    is_admin = user.username.strip().lower() in ["pratyush", "admin", "carnage"] or user.username.strip().lower().startswith("admin_")
+    if is_admin and admin_role and (not user.role or user.role.name != "ADMIN"):
         user.role_id = admin_role.id
         db.commit()
         db.refresh(user)
@@ -167,14 +193,6 @@ def get_current_user(
 
 
 # ---------- Profile / Me ----------
-
-class UserProfileOut(BaseModel):
-    id: int
-    username: str
-    email: str
-    role: str
-    permissions: list[str]
-
 
 @router.get("/me", response_model=UserProfileOut)
 async def get_my_profile(

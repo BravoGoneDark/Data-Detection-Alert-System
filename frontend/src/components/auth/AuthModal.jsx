@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import FormField from "./FormField";
 import { useAuth } from "../../context/AuthContext";
+import { API_URL } from "../../constants/classifications";
 import { 
   ShieldCheck, 
   User, 
@@ -16,7 +17,6 @@ import {
   CheckCircle2
 } from "lucide-react";
 
-const API_BASE = "http://127.0.0.1:8000";
 const SUBJECT_IMAGE = "/login.png";
 
 export default function AuthModal({ onClose }) {
@@ -39,7 +39,7 @@ export default function AuthModal({ onClose }) {
           ? { identifier: username, password }
           : { username, email, password };
 
-      const res = await fetch(`${API_BASE}${path}`, {
+      const res = await fetch(`${API_URL}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -50,7 +50,7 @@ export default function AuthModal({ onClose }) {
         throw new Error(data.detail || "Authentication verification failed");
       }
 
-      login(data.access_token);
+      login(data.access_token, data.user);
       onClose();
     } catch (err) {
       setError(err.message);

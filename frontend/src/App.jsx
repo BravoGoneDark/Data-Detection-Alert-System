@@ -3,23 +3,35 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import AuthenticationPage from './components/auth/AuthenticationPage';
 import { API_URL } from './constants/classifications';
-import HeaderToolbar from './components/dashboard/HeaderToolbar';
-import LshTelemetryWidget from './components/dashboard/LshTelemetryWidget';
+
+// Layout Components
+import Sidebar from './components/layout/Sidebar';
+import TopHeader from './components/layout/TopHeader';
+
+// Dashboard & Content Views
+import OverviewSection from './components/dashboard/OverviewSection';
 import UploadDropzone from './components/dashboard/UploadDropzone';
 import DatasetInventory from './components/dashboard/DatasetInventory';
 import QuarantineBanner from './components/dashboard/QuarantineBanner';
+
+// Modals
 import AuditLedgerModal from './components/modals/AuditLedgerModal';
 import LshArchitectureModal from './components/modals/LshArchitectureModal';
 import AnomalyDefenseModal from './components/modals/AnomalyDefenseModal';
 import QuarantineModal from './components/modals/QuarantineModal';
 import WebhookConfigModal from './components/modals/WebhookConfigModal';
 import RedisTasksModal from './components/modals/RedisTasksModal';
+import UsersModal from './components/modals/UsersModal';
+
+// Hooks
 import { useSecurityFeeds } from './hooks/useSecurityFeeds';
 import { useQuarantineFeeds } from './hooks/useQuarantineFeeds';
 import { useDatasetUpload } from './hooks/useDatasetUpload';
 
 function UploadPanel() {
-  const { token, logout } = useAuth();
+  const { token, user, logout } = useAuth();
+  const [activeView, setActiveView] = useState('overview'); // 'overview' | 'inventory' | 'upload'
+  const [globalSearch, setGlobalSearch] = useState('');
   const [datasets, setDatasets] = useState([]);
   const [loadingDatasets, setLoadingDatasets] = useState(false);
 
@@ -30,6 +42,7 @@ function UploadPanel() {
   const [showQuarantineModal, setShowQuarantineModal] = useState(false);
   const [showWebhooksModal, setShowWebhooksModal] = useState(false);
   const [showRedisModal, setShowRedisModal] = useState(false);
+  const [showUsersModal, setShowUsersModal] = useState(false);
 
   // Security Telemetry Feeds Hooks
   const feeds = useSecurityFeeds(token);
@@ -104,161 +117,218 @@ function UploadPanel() {
     }
   }, [qFeeds.myQuarantine?.is_quarantined]);
 
+  const isAdmin = user?.role === 'ADMIN' || user?.username?.toLowerCase() === 'pratyush' || user?.username?.toLowerCase() === 'admin';
+  const activeThreats = feeds.anomalyStats?.active_threats ?? feeds.anomalies.filter((a) => a.status === 'ACTIVE').length;
+  const quarantinedCount = qFeeds.quarantineStats?.active_quarantines ?? 0;
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-12 font-sans selection:bg-rose-500 selection:text-white">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex font-sans selection:bg-violet-500 selection:text-white">
+      
+      {/* 1. FIXED LEFT SIDEBAR NAVIGATION */}
+      <Sidebar
+        activeView={activeView}
+        setActiveView={setActiveView}
+        onOpenWatchdog={() => setShowAnomalyModal(true)}
+        onOpenQuarantine={() => setShowQuarantineModal(true)}
+        onOpenAudit={() => setShowAuditModal(true)}
+        onOpenUsers={() => setShowUsersModal(true)}
+        onOpenRedis={() => setShowRedisModal(true)}
+        onOpenWebhooks={() => setShowWebhooksModal(true)}
+        onLogout={logout}
+        user={user}
+        datasetCount={datasets.length}
+        activeThreats={activeThreats}
+        quarantinedCount={quarantinedCount}
+      />
+
+      {/* 2. MAIN APP CONTENT CONTAINER (OFFSET WITH pl-64 TO ACCOMMODATE FIXED SIDEBAR) */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen pl-64">
         
-        {/* Header Navigation Toolbar */}
-        <HeaderToolbar
-          onOpenAudit={() => setShowAuditModal(true)}
-          onOpenLsh={() => setShowLshModal(true)}
-          onOpenAnomaly={() => setShowAnomalyModal(true)}
-          onOpenQuarantine={() => setShowQuarantineModal(true)}
+        {/* Top Executive Header */}
+        <TopHeader
+          user={user}
+          onOpenWatchdog={() => setShowAnomalyModal(true)}
           onOpenWebhooks={() => setShowWebhooksModal(true)}
-          onOpenRedis={() => setShowRedisModal(true)}
-          activeThreatsCount={feeds.anomalyStats?.active_threats || 0}
-          activeQuarantinesCount={qFeeds.quarantineStats?.active_quarantines || 0}
-          onLogout={logout}
+          activeThreats={activeThreats}
         />
 
-        {/* Stage 12 Active Quarantine Lockdown Banner */}
-        <QuarantineBanner myQuarantine={qFeeds.myQuarantine} />
+        {/* Dynamic Scrollable Body Area */}
+        <main className="flex-1 p-6 lg:p-8 space-y-8 max-w-7xl w-full mx-auto">
+          
+          {/* Active Quarantine Lockdown Banner */}
+          {qFeeds.myQuarantine?.is_quarantined && (
+            <QuarantineBanner myQuarantine={qFeeds.myQuarantine} />
+          )}
 
-        {/* Stage 9 LSH Telemetry Bar */}
-        <LshTelemetryWidget
-          lshStats={feeds.lshStats}
-          loadingLsh={feeds.loadingLsh}
-          backfillingLsh={feeds.backfillingLsh}
-          lshSuccessMsg={feeds.lshSuccessMsg}
-          onBackfill={() => feeds.handleLshBackfill(uploadOps.setError)}
-        />
-
-        {/* Global Error / Alert Banner */}
-        {uploadOps.error && (
-          <div className="p-4 rounded-xl bg-red-950/60 border border-red-800/80 text-red-300 text-sm flex items-center justify-between shadow-lg">
-            <span>⚠ {uploadOps.error}</span>
-            <button onClick={() => uploadOps.setError(null)} className="text-red-400 hover:text-red-200 text-xs font-semibold px-2 py-0.5 rounded bg-red-900/40">✕ Dismiss</button>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Column: Upload Dropzone */}
-          <div className="lg:col-span-4 space-y-6">
-            <UploadDropzone
-              file={uploadOps.file}
-              setFile={uploadOps.setFile}
-              classification={uploadOps.classification}
-              setClassification={uploadOps.setClassification}
-              description={uploadOps.description}
-              setDescription={uploadOps.setDescription}
-              loading={uploadOps.loading}
-              result={uploadOps.result}
-              setResult={uploadOps.setResult}
-              onUpload={uploadOps.handleUpload}
-              onDownload={uploadOps.handleDownload}
-              isAsyncMode={uploadOps.isAsyncMode}
-              setIsAsyncMode={uploadOps.setIsAsyncMode}
-              asyncTask={uploadOps.asyncTask}
-            />
-          </div>
-
-          {/* Right Column: Dataset Inventory */}
-          <div className="lg:col-span-8 space-y-4">
-            <DatasetInventory
+          {/* VIEW 1: MASTER SOC OVERVIEW (4-SECTION SCROLL JOURNEY) */}
+          {activeView === 'overview' && (
+            <OverviewSection
               datasets={datasets}
               loadingDatasets={loadingDatasets}
-              onRefresh={fetchDatasets}
-              onDownload={uploadOps.handleDownload}
-              downloadingId={uploadOps.downloadingId}
-              isQuarantined={qFeeds.myQuarantine?.is_quarantined}
+              fetchDatasets={fetchDatasets}
+              token={token}
+              myQuarantine={qFeeds.myQuarantine}
+              anomalies={feeds.anomalies}
+              anomalyStats={feeds.anomalyStats}
+              quarantineStats={qFeeds.quarantineStats}
+              redisStats={feeds.lshStats}
+              webhooks={qFeeds.webhooks}
+              auditLogs={feeds.auditLogs}
+              onOpenUpload={() => setActiveView('upload')}
+              onOpenInventory={() => setActiveView('inventory')}
+              onOpenWatchdog={() => setShowAnomalyModal(true)}
+              onOpenQuarantine={() => setShowQuarantineModal(true)}
+              onOpenAudit={() => setShowAuditModal(true)}
+              onOpenUsers={() => setShowUsersModal(true)}
+              onOpenRedis={() => setShowRedisModal(true)}
+              onOpenWebhooks={() => setShowWebhooksModal(true)}
+              isAdmin={isAdmin}
             />
-          </div>
-        </div>
+          )}
 
-        {/* Modals */}
-        <RedisTasksModal
-          isOpen={showRedisModal}
-          onClose={() => setShowRedisModal(false)}
-          token={token}
-        />
+          {/* VIEW 2: DEDICATED DATASET INVENTORY */}
+          {activeView === 'inventory' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-wide">Content-Addressable Storage Repository</h2>
+                  <p className="text-xs text-slate-400">Filter, search, and download datasets according to security clearance</p>
+                </div>
+                <button
+                  onClick={() => setActiveView('upload')}
+                  className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-lg transition-colors flex items-center gap-1.5"
+                >
+                  <span>⚡</span> Upload Dataset
+                </button>
+              </div>
+              <DatasetInventory
+                datasets={datasets}
+                loading={loadingDatasets}
+                onRefresh={fetchDatasets}
+                token={token}
+                isQuarantined={qFeeds.myQuarantine?.is_quarantined}
+                quarantineRiskScore={qFeeds.myQuarantine?.risk_score}
+              />
+            </div>
+          )}
 
-        <LshArchitectureModal
-          isOpen={showLshModal}
-          onClose={() => setShowLshModal(false)}
-        />
-
-        <AuditLedgerModal
-          isOpen={showAuditModal}
-          onClose={() => setShowAuditModal(false)}
-          auditLogs={feeds.auditLogs}
-          auditTotal={feeds.auditTotal}
-          auditStats={feeds.auditStats}
-          loadingAudit={feeds.loadingAudit}
-          auditSeverity={feeds.auditSeverity}
-          setAuditSeverity={feeds.setAuditSeverity}
-          auditEventType={feeds.auditEventType}
-          setAuditEventType={feeds.setAuditEventType}
-          auditUserFilter={feeds.auditUserFilter}
-          setAuditUserFilter={feeds.setAuditUserFilter}
-          onRefresh={feeds.fetchAuditLogs}
-        />
-
-        <AnomalyDefenseModal
-          isOpen={showAnomalyModal}
-          onClose={() => setShowAnomalyModal(false)}
-          anomalies={feeds.anomalies}
-          totalAnomalies={feeds.totalAnomalies}
-          anomalyStats={feeds.anomalyStats}
-          loadingAnomalies={feeds.loadingAnomalies}
-          severityFilter={feeds.anomalySeverity}
-          setSeverityFilter={feeds.setAnomalySeverity}
-          statusFilter={feeds.anomalyStatus}
-          setStatusFilter={feeds.setStatusFilter}
-          typeFilter={feeds.anomalyType}
-          setTypeFilter={feeds.setTypeFilter}
-          userFilter={feeds.anomalyUserFilter}
-          setUserFilter={feeds.setUserFilter}
-          onRefresh={feeds.fetchAnomalies}
-          token={token}
-        />
-
-        <QuarantineModal
-          isOpen={showQuarantineModal}
-          onClose={() => setShowQuarantineModal(false)}
-          records={qFeeds.quarantineRecords}
-          total={qFeeds.quarantineTotal}
-          stats={qFeeds.quarantineStats}
-          loading={qFeeds.loadingQuarantine}
-          statusFilter={qFeeds.quarantineStatusFilter}
-          setStatusFilter={qFeeds.setQuarantineStatusFilter}
-          userFilter={qFeeds.quarantineUserFilter}
-          setUserFilter={qFeeds.setQuarantineUserFilter}
-          onRefresh={qFeeds.fetchQuarantines}
-          onRelease={async (id, notes) => {
-            const res = await qFeeds.releaseQuarantine(id, notes);
-            await qFeeds.fetchMyQuarantineStatus();
-            return res;
-          }}
-          onManualQuarantine={async (targetUsername, reason, riskScore) => {
-            const res = await qFeeds.manualQuarantine(targetUsername, reason, riskScore);
-            await qFeeds.fetchMyQuarantineStatus();
-            return res;
-          }}
-        />
-
-        <WebhookConfigModal
-          isOpen={showWebhooksModal}
-          onClose={() => setShowWebhooksModal(false)}
-          webhooks={qFeeds.webhooks}
-          loading={qFeeds.loadingWebhooks}
-          testResult={qFeeds.testResult}
-          onRefresh={qFeeds.fetchWebhooks}
-          onCreate={qFeeds.createWebhook}
-          onDelete={qFeeds.deleteWebhook}
-          onTest={qFeeds.testWebhook}
-        />
-
+          {/* VIEW 3: INGESTION DROPZONE */}
+          {activeView === 'upload' && (
+            <div className="max-w-4xl mx-auto space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white tracking-wide">Dataset Ingestion & Registration</h2>
+                  <p className="text-xs text-slate-400">Multi-tier deduplication verification with real-time LSH indexing</p>
+                </div>
+                <button
+                  onClick={() => setActiveView('overview')}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
+                >
+                  ← Back to Overview
+                </button>
+              </div>
+              <UploadDropzone
+                uploadOps={uploadOps}
+                myQuarantine={qFeeds.myQuarantine}
+                onOpenLsh={() => setShowLshModal(true)}
+              />
+            </div>
+          )}
+        </main>
       </div>
+
+      {/* 3. MODALS CONTAINER */}
+      <LshArchitectureModal
+        isOpen={showLshModal}
+        onClose={() => setShowLshModal(false)}
+        stats={feeds.lshStats}
+        onBackfill={feeds.handleLshBackfill}
+      />
+
+      <RedisTasksModal
+        isOpen={showRedisModal}
+        onClose={() => setShowRedisModal(false)}
+        token={token}
+      />
+
+      <AuditLedgerModal
+        isOpen={showAuditModal}
+        onClose={() => setShowAuditModal(false)}
+        auditLogs={feeds.auditLogs}
+        auditTotal={feeds.totalAuditLogs}
+        auditStats={feeds.auditStats}
+        loadingAudit={feeds.loadingAudit}
+        auditSeverity={feeds.auditSeverity}
+        setAuditSeverity={feeds.setAuditSeverity}
+        auditEventType={feeds.auditEventType}
+        setAuditEventType={feeds.setAuditEventType}
+        auditUserFilter={feeds.auditUserFilter}
+        setAuditUserFilter={feeds.setAuditUserFilter}
+        onRefresh={feeds.fetchAuditLogs}
+      />
+
+      <AnomalyDefenseModal
+        isOpen={showAnomalyModal}
+        onClose={() => setShowAnomalyModal(false)}
+        anomalies={feeds.anomalies}
+        totalAnomalies={feeds.totalAnomalies}
+        anomalyStats={feeds.anomalyStats}
+        loadingAnomalies={feeds.loadingAnomalies}
+        severityFilter={feeds.anomalySeverity}
+        setSeverityFilter={feeds.setAnomalySeverity}
+        statusFilter={feeds.anomalyStatus}
+        setStatusFilter={feeds.setStatusFilter}
+        typeFilter={feeds.anomalyType}
+        setTypeFilter={feeds.setTypeFilter}
+        userFilter={feeds.anomalyUserFilter}
+        setUserFilter={feeds.setUserFilter}
+        onRefresh={feeds.fetchAnomalies}
+        token={token}
+      />
+
+      <QuarantineModal
+        isOpen={showQuarantineModal}
+        onClose={() => setShowQuarantineModal(false)}
+        records={qFeeds.quarantineRecords}
+        total={qFeeds.quarantineTotal}
+        stats={qFeeds.quarantineStats}
+        loading={qFeeds.loadingQuarantine}
+        statusFilter={qFeeds.quarantineStatusFilter}
+        setStatusFilter={qFeeds.setQuarantineStatusFilter}
+        userFilter={qFeeds.quarantineUserFilter}
+        setUserFilter={qFeeds.setQuarantineUserFilter}
+        onRefresh={qFeeds.fetchQuarantines}
+        onRelease={async (id, notes) => {
+          const res = await qFeeds.releaseQuarantine(id, notes);
+          await qFeeds.fetchMyQuarantineStatus();
+          return res;
+        }}
+        onManualQuarantine={async (targetUsername, reason, riskScore) => {
+          const res = await qFeeds.manualQuarantine(targetUsername, reason, riskScore);
+          await qFeeds.fetchMyQuarantineStatus();
+          return res;
+        }}
+      />
+
+      <WebhookConfigModal
+        isOpen={showWebhooksModal}
+        onClose={() => setShowWebhooksModal(false)}
+        webhooks={qFeeds.webhooks}
+        loading={qFeeds.loadingWebhooks}
+        testResult={qFeeds.testResult}
+        onRefresh={qFeeds.fetchWebhooks}
+        onCreate={qFeeds.createWebhook}
+        onDelete={qFeeds.deleteWebhook}
+        onTest={qFeeds.testWebhook}
+      />
+
+      <UsersModal
+        isOpen={showUsersModal}
+        onClose={() => setShowUsersModal(false)}
+        token={token}
+        currentUsername={user?.username}
+      />
+
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // frontend/src/hooks/useSecurityFeeds.js
-import { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { API_URL } from '../constants/classifications';
 
 export function useSecurityFeeds(token) {
@@ -28,12 +28,32 @@ export function useSecurityFeeds(token) {
   const [anomalyType, setAnomalyType] = useState('');
   const [anomalyUserFilter, setAnomalyUserFilter] = useState('');
 
+  // Persistent Refs to prevent stale closure filter wipes during background interval polling
+  const tokenRef = useRef(token);
+  const auditSeverityRef = useRef(auditSeverity);
+  const auditEventTypeRef = useRef(auditEventType);
+  const auditUserFilterRef = useRef(auditUserFilter);
+  const anomalySeverityRef = useRef(anomalySeverity);
+  const anomalyStatusRef = useRef(anomalyStatus);
+  const anomalyTypeRef = useRef(anomalyType);
+  const anomalyUserFilterRef = useRef(anomalyUserFilter);
+
+  useEffect(() => { tokenRef.current = token; }, [token]);
+  useEffect(() => { auditSeverityRef.current = auditSeverity; }, [auditSeverity]);
+  useEffect(() => { auditEventTypeRef.current = auditEventType; }, [auditEventType]);
+  useEffect(() => { auditUserFilterRef.current = auditUserFilter; }, [auditUserFilter]);
+  useEffect(() => { anomalySeverityRef.current = anomalySeverity; }, [anomalySeverity]);
+  useEffect(() => { anomalyStatusRef.current = anomalyStatus; }, [anomalyStatus]);
+  useEffect(() => { anomalyTypeRef.current = anomalyType; }, [anomalyType]);
+  useEffect(() => { anomalyUserFilterRef.current = anomalyUserFilter; }, [anomalyUserFilter]);
+
   const fetchLshStats = async () => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     setLoadingLsh(true);
     try {
       const res = await fetch(`${API_URL}/lsh/stats`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -47,13 +67,14 @@ export function useSecurityFeeds(token) {
   };
 
   const handleLshBackfill = async (setError) => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     setBackfillingLsh(true);
     setLshSuccessMsg(null);
     try {
       const res = await fetch(`${API_URL}/lsh/backfill`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${currentToken}` },
       });
       if (res.ok) {
         const data = await res.json();
@@ -69,21 +90,25 @@ export function useSecurityFeeds(token) {
   };
 
   const fetchAuditLogs = async (silent = false) => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     if (!silent) setLoadingAudit(true);
     try {
       const params = new URLSearchParams();
-      if (auditSeverity) params.append('severity', auditSeverity);
-      if (auditEventType) params.append('event_type', auditEventType);
-      if (auditUserFilter) params.append('username', auditUserFilter);
+      const sev = auditSeverityRef.current;
+      const evt = auditEventTypeRef.current;
+      const uname = auditUserFilterRef.current;
+      if (sev) params.append('severity', sev);
+      if (evt) params.append('event_type', evt);
+      if (uname) params.append('username', uname);
       params.append('limit', '50');
 
       const [logsRes, statsRes] = await Promise.all([
         fetch(`${API_URL}/admin/audit-logs?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
         fetch(`${API_URL}/admin/audit-logs/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
       ]);
 
@@ -104,22 +129,27 @@ export function useSecurityFeeds(token) {
   };
 
   const fetchAnomalies = async (silent = false) => {
-    if (!token) return;
+    const currentToken = tokenRef.current || token;
+    if (!currentToken) return;
     if (!silent) setLoadingAnomalies(true);
     try {
       const params = new URLSearchParams();
-      if (anomalySeverity) params.append('severity', anomalySeverity);
-      if (anomalyStatus) params.append('status', anomalyStatus);
-      if (anomalyType) params.append('anomaly_type', anomalyType);
-      if (anomalyUserFilter) params.append('username', anomalyUserFilter);
+      const sev = anomalySeverityRef.current;
+      const stat = anomalyStatusRef.current;
+      const type = anomalyTypeRef.current;
+      const uname = anomalyUserFilterRef.current;
+      if (sev) params.append('severity', sev);
+      if (stat) params.append('status', stat);
+      if (type) params.append('anomaly_type', type);
+      if (uname) params.append('username', uname);
       params.append('limit', '50');
 
       const [anomRes, statsRes] = await Promise.all([
         fetch(`${API_URL}/admin/anomalies?${params.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
         fetch(`${API_URL}/admin/anomalies/stats`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${currentToken}` },
         }),
       ]);
 

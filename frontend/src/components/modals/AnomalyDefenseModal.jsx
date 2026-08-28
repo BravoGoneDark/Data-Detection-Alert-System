@@ -1,5 +1,5 @@
 // frontend/src/components/modals/AnomalyDefenseModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { API_URL } from '../../constants/classifications';
 
 export default function AnomalyDefenseModal({
@@ -22,6 +22,23 @@ export default function AnomalyDefenseModal({
 }) {
   const [resolvingId, setResolvingId] = useState(null);
   const [resolutionSuccess, setResolutionSuccess] = useState(null);
+  const [localSearch, setLocalSearch] = useState(userFilter || '');
+
+  // Keep localSearch in sync if parent filter changes
+  useEffect(() => {
+    setLocalSearch(userFilter || '');
+  }, [userFilter]);
+
+  // Debounce username filter
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = setTimeout(() => {
+      if (typeof setUserFilter === 'function' && localSearch !== userFilter) {
+        setUserFilter(localSearch);
+      }
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [localSearch, setUserFilter, isOpen, userFilter]);
 
   if (!isOpen) return null;
 
@@ -202,9 +219,9 @@ export default function AnomalyDefenseModal({
             <input
               type="text"
               placeholder="Filter by username..."
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-700 text-xs rounded-lg px-3 py-1.5 text-slate-300 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-40"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              className="bg-slate-950 border border-slate-700 text-xs rounded-lg px-3 py-1.5 text-slate-300 placeholder-slate-500 focus:outline-none focus:border-amber-500 w-40 font-mono"
             />
           </div>
 
@@ -217,20 +234,19 @@ export default function AnomalyDefenseModal({
           </button>
         </div>
 
-        {/* Anomaly Records Table */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {loadingAnomalies ? (
-            <div className="py-16 text-center text-slate-400 text-sm">
-              <span className="inline-block animate-spin mr-2">⚙</span>
-              Querying Behavioral Anomaly Defense Ledger...
-            </div>
-          ) : anomalies.length === 0 ? (
-            <div className="py-16 text-center text-slate-500 text-sm">
-              No anomaly events found matching current criteria.
+        {/* Anomaly Records Table with Persistent Height (Zero Bouncing) */}
+        <div className="flex-1 overflow-y-auto min-h-[260px] p-4 relative">
+          {loadingAnomalies && (
+            <div className="absolute top-0 inset-x-4 h-1 bg-amber-500/80 animate-pulse z-10" />
+          )}
+
+          {!loadingAnomalies && anomalies.length === 0 ? (
+            <div className="py-20 text-center text-slate-500 text-sm font-mono">
+              No anomaly events found matching "{localSearch}".
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-800">
-              <table className="w-full text-left text-xs text-slate-300 border-collapse">
+              <table className={`w-full text-left text-xs text-slate-300 border-collapse transition-opacity duration-200 ${loadingAnomalies ? 'opacity-50' : 'opacity-100'}`}>
                 <thead className="bg-slate-950/80 text-[11px] uppercase tracking-wider text-slate-400 border-b border-slate-800 font-mono">
                   <tr>
                     <th className="p-3">Timestamp</th>

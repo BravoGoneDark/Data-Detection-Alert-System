@@ -1,12 +1,16 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function AuditLedgerModal({
   isOpen,
   onClose,
   auditLogs,
+  logs,
   auditTotal,
+  totalLogs,
   auditStats,
+  stats,
   loadingAudit,
+  loading,
   auditSeverity,
   setAuditSeverity,
   auditEventType,
@@ -15,7 +19,30 @@ export default function AuditLedgerModal({
   setAuditUserFilter,
   onRefresh,
 }) {
+  const [localSearch, setLocalSearch] = useState(auditUserFilter || '');
+
+  // Keep localSearch in sync if parent filter changes
+  useEffect(() => {
+    setLocalSearch(auditUserFilter || '');
+  }, [auditUserFilter]);
+
+  // Debounce audit username filter
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = setTimeout(() => {
+      if (typeof setAuditUserFilter === 'function' && localSearch !== auditUserFilter) {
+        setAuditUserFilter(localSearch);
+      }
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [localSearch, setAuditUserFilter, isOpen, auditUserFilter]);
+
   if (!isOpen) return null;
+
+  const logsList = auditLogs || logs || [];
+  const statistics = auditStats || stats || {};
+  const total = auditTotal ?? totalLogs ?? 0;
+  const isLoading = loadingAudit ?? loading ?? false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
@@ -55,44 +82,44 @@ export default function AuditLedgerModal({
         </div>
 
         {/* Security Telemetry Overview Chips */}
-        {auditStats && (
+        {statistics && (
           <div className="space-y-3 flex-shrink-0">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3">
                 <span className="text-[10px] text-slate-400 block uppercase font-mono">Total Recorded Events</span>
                 <span className="text-lg font-mono font-bold text-white">
-                  {auditStats.total_events?.toLocaleString()}
+                  {statistics.total_events?.toLocaleString() || 0}
                 </span>
               </div>
               <div className="bg-rose-950/40 border border-rose-800/50 rounded-xl p-3">
                 <span className="text-[10px] text-rose-400 block uppercase font-mono font-bold">Critical Breaches</span>
                 <span className="text-lg font-mono font-bold text-rose-300">
-                  {auditStats.severity_breakdown?.CRITICAL || 0}
+                  {statistics.severity_breakdown?.CRITICAL || 0}
                 </span>
               </div>
               <div className="bg-amber-950/40 border border-amber-800/50 rounded-xl p-3">
                 <span className="text-[10px] text-amber-400 block uppercase font-mono font-bold">Warnings / Duplicates</span>
                 <span className="text-lg font-mono font-bold text-amber-300">
-                  {auditStats.severity_breakdown?.WARNING || 0}
+                  {statistics.severity_breakdown?.WARNING || 0}
                 </span>
               </div>
               <div className="bg-cyan-950/40 border border-cyan-800/50 rounded-xl p-3">
                 <span className="text-[10px] text-cyan-400 block uppercase font-mono font-bold">Legitimate Ops</span>
                 <span className="text-lg font-mono font-bold text-cyan-300">
-                  {auditStats.severity_breakdown?.INFO || 0}
+                  {statistics.severity_breakdown?.INFO || 0}
                 </span>
               </div>
             </div>
 
             {/* Top Access Violators Alert Bar */}
-            {auditStats.top_denied_users && auditStats.top_denied_users.length > 0 && (
+            {statistics.top_denied_users && statistics.top_denied_users.length > 0 && (
               <div className="bg-rose-950/30 border border-rose-800/40 rounded-xl p-2.5 flex items-center justify-between text-xs">
                 <div className="flex items-center gap-2 text-rose-300">
                   <span className="text-sm">⚠️</span>
                   <span className="font-semibold text-[11px]">Top Clearance Violators:</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {auditStats.top_denied_users.map((v, i) => (
+                  {statistics.top_denied_users.map((v, i) => (
                     <span key={i} className="px-2 py-0.5 rounded bg-rose-900/60 border border-rose-700/60 text-rose-200 text-[10px] font-mono">
                       {v.username}: <strong className="text-white">{v.violations_count} blocked</strong>
                     </span>
@@ -103,8 +130,8 @@ export default function AuditLedgerModal({
           </div>
         )}
 
-        {/* Filters Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/60 border border-slate-800 rounded-xl p-3 flex-shrink-0">
+        {/* Filter Controls Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex-shrink-0">
           <div className="flex flex-wrap items-center gap-2.5">
             <select
               value={auditSeverity}
@@ -112,9 +139,9 @@ export default function AuditLedgerModal({
               className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-rose-500 font-mono"
             >
               <option value="">All Severities</option>
-              <option value="CRITICAL">CRITICAL</option>
-              <option value="WARNING">WARNING</option>
-              <option value="INFO">INFO</option>
+              <option value="CRITICAL">🔴 CRITICAL</option>
+              <option value="WARNING">🟡 WARNING</option>
+              <option value="INFO">🟢 INFO</option>
             </select>
 
             <select
@@ -124,43 +151,41 @@ export default function AuditLedgerModal({
             >
               <option value="">All Event Types</option>
               <option value="ACCESS_DENIED">ACCESS_DENIED</option>
-              <option value="DUPLICATE_DETECTED">DUPLICATE_DETECTED</option>
-              <option value="DUPLICATE_OVERRIDE">DUPLICATE_OVERRIDE</option>
+              <option value="USER_QUARANTINED">USER_QUARANTINED</option>
+              <option value="QUARANTINE_RELEASED">QUARANTINE_RELEASED</option>
+              <option value="USER_ROLE_CHANGED">USER_ROLE_CHANGED</option>
               <option value="DATASET_UPLOAD">DATASET_UPLOAD</option>
+              <option value="DUPLICATE_DETECTED">DUPLICATE_DETECTED</option>
               <option value="DATASET_DOWNLOAD">DATASET_DOWNLOAD</option>
-              <option value="LOGIN_FAILED">LOGIN_FAILED</option>
-              <option value="LOGIN_SUCCESS">LOGIN_SUCCESS</option>
-              <option value="USER_SIGNUP">USER_SIGNUP</option>
-              <option value="LSH_BACKFILL">LSH_BACKFILL</option>
             </select>
 
             <input
               type="text"
               placeholder="Filter by username..."
-              value={auditUserFilter}
-              onChange={(e) => setAuditUserFilter(e.target.value)}
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-rose-500 font-mono w-40"
             />
           </div>
 
           <span className="text-[11px] text-slate-400 font-mono">
-            Showing <strong className="text-white">{auditLogs.length}</strong> of <strong className="text-white">{auditTotal}</strong> logs
+            Showing <strong className="text-white">{logsList.length}</strong> of <strong className="text-white">{total}</strong> logs
           </span>
         </div>
 
-        {/* Audit Logs Table */}
-        <div className="flex-1 overflow-y-auto border border-slate-800 rounded-xl bg-slate-950/80 min-h-[220px]">
-          {loadingAudit ? (
-            <div className="flex items-center justify-center h-48 text-slate-400 text-xs gap-2">
-              <span className="animate-spin text-rose-400">⏳</span> Loading audit ledger...
-            </div>
-          ) : auditLogs.length === 0 ? (
-            <div className="flex items-center justify-center h-48 text-slate-500 text-xs">
+        {/* Audit Logs Table with Persistent Height (Zero Bouncing) */}
+        <div className="flex-1 overflow-y-auto border border-slate-800 rounded-xl bg-slate-950/80 min-h-[260px] relative">
+          {isLoading && (
+            <div className="absolute top-0 inset-x-0 h-1 bg-rose-500/80 animate-pulse z-10" />
+          )}
+
+          {!isLoading && logsList.length === 0 ? (
+            <div className="flex items-center justify-center h-48 text-slate-500 text-xs font-mono">
               No security audit logs found matching criteria.
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse font-mono">
-              <thead className="bg-slate-900/90 text-slate-400 text-[10px] uppercase sticky top-0 border-b border-slate-800">
+            <table className={`w-full text-left text-xs border-collapse font-mono transition-opacity duration-200 ${isLoading ? 'opacity-50' : 'opacity-100'}`}>
+              <thead className="bg-slate-900/90 text-slate-400 text-[10px] uppercase sticky top-0 border-b border-slate-800 z-10">
                 <tr>
                   <th className="py-2.5 px-3">Timestamp</th>
                   <th className="py-2.5 px-3">Severity</th>
@@ -172,7 +197,7 @@ export default function AuditLedgerModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60">
-                {auditLogs.map((log) => (
+                {logsList.map((log) => (
                   <tr key={log.id} className="hover:bg-slate-900/50 transition-colors">
                     <td className="py-2 px-3 text-[10px] text-slate-400 whitespace-nowrap">
                       {new Date(log.timestamp).toLocaleString()}

@@ -143,18 +143,19 @@ export default function DatasetInventory({
         </div>
       </div>
 
-      {/* Dataset Table / Empty State */}
-      {loadingDatasets && datasets.length === 0 ? (
-        <div className="py-16 text-center text-sm text-slate-400 animate-pulse">
-          Loading datasets from secure storage...
-        </div>
-      ) : paginatedDatasets.length === 0 ? (
-        <div className="py-16 text-center text-sm text-slate-400">
-          No datasets found matching your search query.
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="overflow-x-auto rounded-xl border border-slate-800/80">
+      {/* Dataset Table / Empty State (Persistent Height, Zero Bouncing) */}
+      <div className="min-h-[320px] flex flex-col justify-between">
+        {loadingDatasets && datasets.length === 0 ? (
+          <div className="py-24 text-center text-sm text-slate-400 animate-pulse font-mono">
+            Loading datasets from secure storage...
+          </div>
+        ) : paginatedDatasets.length === 0 ? (
+          <div className="py-24 text-center text-sm text-slate-500 font-mono">
+            No datasets found matching "{searchQuery}".
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="overflow-x-auto rounded-xl border border-slate-800/80">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-950/80 text-slate-400 uppercase font-mono text-[10px] border-b border-slate-800">
                 <tr>
@@ -296,6 +297,7 @@ export default function DatasetInventory({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

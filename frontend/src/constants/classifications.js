@@ -7,7 +7,7 @@ export const API_URL = (() => {
   if (typeof window !== 'undefined' && window.location.port === '3000') {
     return '/api';
   }
-  return 'http://localhost:8000';
+  return 'http://127.0.0.1:8000';
 })();
 
 export const CLASSIFICATIONS = [

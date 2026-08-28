@@ -1,5 +1,5 @@
 // frontend/src/components/modals/QuarantineModal.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export default function QuarantineModal({
   isOpen,
@@ -27,6 +27,24 @@ export default function QuarantineModal({
   const [releaseNotes, setReleaseNotes] = useState('');
   const [releaseError, setReleaseError] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const [localSearch, setLocalSearch] = useState(userFilter || '');
+
+  // Keep localSearch in sync if parent filter changes
+  useEffect(() => {
+    setLocalSearch(userFilter || '');
+  }, [userFilter]);
+
+  // Debounce search input by 250ms to prevent rapid re-queries and layout bouncing
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = setTimeout(() => {
+      if (typeof setUserFilter === 'function' && localSearch !== userFilter) {
+        setUserFilter(localSearch);
+      }
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [localSearch, setUserFilter, isOpen, userFilter]);
 
   if (!isOpen) return null;
 
@@ -140,9 +158,9 @@ export default function QuarantineModal({
             <input
               type="text"
               placeholder="Search by username..."
-              value={userFilter}
-              onChange={(e) => setUserFilter(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 w-48"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder-slate-500 focus:outline-none focus:border-rose-500 w-48 font-mono"
             />
             <select
               value={statusFilter}
@@ -162,19 +180,19 @@ export default function QuarantineModal({
           </button>
         </div>
 
-        {/* Quarantine Records Table */}
-        <div className="flex-1 overflow-y-auto min-h-0 border border-slate-800/80 rounded-xl bg-slate-900/40">
-          {loading ? (
-            <div className="py-16 text-center text-sm text-slate-400 animate-pulse">
-              Scanning containment ledger & quarantine status...
-            </div>
-          ) : records.length === 0 ? (
-            <div className="py-16 text-center text-sm text-slate-400">
-              No quarantine containment records found matching current criteria.
+        {/* Quarantine Records Table with Persistent Height (Zero Bouncing) */}
+        <div className="flex-1 overflow-y-auto min-h-[260px] border border-slate-800/80 rounded-xl bg-slate-900/40 relative">
+          {loading && (
+            <div className="absolute top-0 inset-x-0 h-1 bg-rose-500/80 animate-pulse z-10" />
+          )}
+
+          {!loading && records.length === 0 ? (
+            <div className="py-20 text-center text-sm text-slate-500 font-mono">
+              No quarantine containment records found matching "{localSearch}".
             </div>
           ) : (
-            <table className="w-full text-left text-xs border-collapse">
-              <thead className="sticky top-0 bg-slate-900/95 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px]">
+            <table className={`w-full text-left text-xs border-collapse transition-opacity duration-200 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+              <thead className="sticky top-0 bg-slate-900/95 border-b border-slate-800 text-slate-400 uppercase font-mono text-[10px] z-10">
                 <tr>
                   <th className="py-2.5 px-3">Subject / IP</th>
                   <th className="py-2.5 px-3">Containment Reason</th>
@@ -196,9 +214,8 @@ export default function QuarantineModal({
                       {rec.reason}
                     </td>
                     <td className="py-3 px-3 font-mono font-bold">
-                      <span className={`px-2 py-0.5 rounded text-[11px] ${
-                        rec.risk_score >= 80 ? 'bg-rose-950/80 text-rose-300 border border-rose-700/60' : 'bg-amber-950/80 text-amber-300 border border-amber-700/60'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded text-[11px] ${rec.risk_score >= 80 ? 'bg-rose-950/80 text-rose-300 border border-rose-700/60' : 'bg-amber-950/80 text-amber-300 border border-amber-700/60'
+                        }`}>
                         {rec.risk_score}
                       </span>
                     </td>
