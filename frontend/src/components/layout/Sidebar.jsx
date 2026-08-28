@@ -26,15 +26,10 @@ export default function Sidebar({
   const eLower = (user?.email || '').toLowerCase();
   const isAdmin = user?.role === 'ADMIN' || uLower.includes('pratyush') || uLower.includes('carnage') || uLower.includes('admin') || eLower.includes('pratyush') || eLower.includes('carnage');
 
-  const scrollToFraction = (fraction, targetStage) => {
+  const navigateToStage = (targetStage) => {
     if (setOverviewStage) setOverviewStage(targetStage);
     if (activeView !== 'overview') {
       setActiveView('overview');
-    } else {
-      const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
-      if (scrollHeight > 0) {
-        window.scrollTo({ top: fraction * scrollHeight, behavior: 'smooth' });
-      }
     }
   };
 
@@ -90,7 +85,7 @@ export default function Sidebar({
           
           {/* SOC Overview (Stage 1) */}
           <button
-            onClick={() => scrollToFraction(0.0, 1)}
+            onClick={() => navigateToStage(1)}
             className={getNavButtonClass(isOverviewActive)}
           >
             <div className="flex items-center gap-2.5">
@@ -102,7 +97,7 @@ export default function Sidebar({
 
           {/* Visual Analytics (Stage 2) */}
           <button
-            onClick={() => scrollToFraction(0.36, 2)}
+            onClick={() => navigateToStage(2)}
             className={getNavButtonClass(isAnalyticsActive)}
           >
             <div className="flex items-center gap-2.5">
@@ -114,7 +109,7 @@ export default function Sidebar({
 
           {/* Live Telemetry (Stage 3) */}
           <button
-            onClick={() => scrollToFraction(0.65, 3)}
+            onClick={() => navigateToStage(3)}
             className={getNavButtonClass(isTelemetryActive)}
           >
             <div className="flex items-center gap-2.5">
@@ -126,7 +121,7 @@ export default function Sidebar({
 
           {/* Dataset Inventory (Stage 4 or dedicated view) */}
           <button
-            onClick={() => scrollToFraction(0.95, 4)}
+            onClick={() => navigateToStage(4)}
             className={getNavButtonClass(isInventoryActive)}
           >
             <div className="flex items-center gap-2.5">

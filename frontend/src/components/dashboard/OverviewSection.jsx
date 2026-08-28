@@ -1,6 +1,6 @@
+// frontend/src/components/dashboard/OverviewSection.jsx
 import React, { useRef, useState, useEffect } from 'react';
-import { motion, useScroll, useTransform, useSpring, useMotionValueEvent } from 'motion/react';
-import { Sparkles, Shield, Activity, Database, KeyRound, ChevronDown, Layers, Terminal, Radio } from 'lucide-react';
+import { Sparkles, Shield, Activity, Database, KeyRound, ChevronDown, ChevronUp, Layers, Terminal, Radio } from 'lucide-react';
 
 import ScrollShowcase from './ScrollShowcase';
 import RiskGauge from './RiskGauge';
@@ -32,170 +32,94 @@ export default function OverviewSection({
   initialStage = 1,
   onStageChange,
 }) {
-  const containerRef = useRef(null);
   const [activeStage, setActiveStage] = useState(initialStage);
-  const isProgrammaticRef = useRef(false);
-  const scrollLockTimerRef = useRef(null);
+  const lastScrollTime = useRef(0);
 
   const activeThreats = anomalyStats?.active_threats ?? anomalies.filter((a) => a.status === 'ACTIVE').length;
   const quarantinedCount = quarantineStats?.active_quarantines ?? 0;
   const hitRatio = redisStats?.hit_ratio_percent ?? 99.7;
 
-  // 1. Balanced 400vh track for smooth, natural overlay pacing
-  const { scrollYProgress } = useScroll({
-    target: containerRef,
-    offset: ['start start', 'end end'],
-  });
-
-  // 2. High-speed critically-damped spring physics
-  const progress = useSpring(scrollYProgress, {
-    stiffness: 350,
-    damping: 38,
-    mass: 0.15,
-    restDelta: 0.0001,
-  });
-
-  // Direct mount scroll to target stage when coming from another view (prevents scrolling from 0 down)
   useEffect(() => {
-    if (initialStage > 1 && containerRef.current) {
-      const fractions = { 1: 0.0, 2: 0.36, 3: 0.65, 4: 0.95 };
-      const frac = fractions[initialStage] || 0.0;
-      const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
-      const targetTop = containerRef.current.offsetTop + frac * scrollableHeight;
-      isProgrammaticRef.current = true;
-      window.scrollTo({ top: Math.max(0, targetTop), behavior: 'instant' });
-      setTimeout(() => {
-        isProgrammaticRef.current = false;
-      }, 100);
+    if (initialStage && initialStage !== activeStage) {
+      setActiveStage(initialStage);
     }
-  }, []);
+  }, [initialStage]);
 
-  // 3. Sync HUD pill highlights lockstep with scroll without flickering on programmatic clicks
-  useMotionValueEvent(progress, 'change', (latest) => {
-    if (isProgrammaticRef.current) return;
-    let nextStage = 1;
-    if (latest < 0.23) {
-      nextStage = 1;
-    } else if (latest >= 0.23 && latest < 0.49) {
-      nextStage = 2;
-    } else if (latest >= 0.49 && latest < 0.75) {
-      nextStage = 3;
-    } else {
-      nextStage = 4;
-    }
-    setActiveStage(nextStage);
-    if (onStageChange) onStageChange(nextStage);
-  });
-
-  // Background Watermark "✦ DDAS SOC"
-  const watermarkOpacity = useTransform(progress, [0, 0.4, 0.7, 1], [0.08, 0.15, 0.15, 0.08]);
-  const watermarkScale = useTransform(progress, [0, 1], [0.95, 1.08]);
-
-  // --- FRAME 1: HERO ARCHITECTURE SHOWCASE (0.00 -> 0.25) ---
-  const f1Opacity = useTransform(progress, [0, 0.16, 0.25], [1, 0.85, 0]);
-  const f1Scale = useTransform(progress, [0, 0.25], [1, 0.88]);
-  const f1Y = useTransform(progress, [0, 0.25], [0, -60]);
-  const f1PointerEvents = useTransform(progress, (p) => (p < 0.21 ? 'auto' : 'none'));
-
-  // --- FRAME 2: 3 FLOATING ANALYTICS CARDS (0.17 -> 0.57) ---
-  const f2Opacity = useTransform(progress, [0.17, 0.26, 0.48, 0.57], [0, 1, 1, 0]);
-  const f2Scale = useTransform(progress, [0.17, 0.28, 0.48, 0.57], [0.86, 1, 1, 0.88]);
-  const f2Y = useTransform(progress, [0.17, 0.28, 0.48, 0.57], [80, 0, 0, -60]);
-  const f2PointerEvents = useTransform(progress, (p) => (p >= 0.21 && p <= 0.53 ? 'auto' : 'none'));
-
-  // Frame 2 Floating Micro-Offsets
-  const card1Offset = useTransform(progress, [0.21, 0.38], [-18, 0]);
-  const card2Offset = useTransform(progress, [0.21, 0.38], [18, 0]);
-  const card3Offset = useTransform(progress, [0.21, 0.38], [-18, 0]);
-
-  // --- FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (0.49 -> 0.82) ---
-  const f3Opacity = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [0, 1, 1, 0]);
-  const f3Scale = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [0.86, 1, 1, 0.88]);
-  const f3Y = useTransform(progress, [0.49, 0.58, 0.73, 0.82], [80, 0, 0, -60]);
-  const f3PointerEvents = useTransform(progress, (p) => (p >= 0.50 && p <= 0.79 ? 'auto' : 'none'));
-
-  // --- FRAME 4: CAS REPOSITORY & DATASET INVENTORY (0.74 -> 1.00) ---
-  const f4Opacity = useTransform(progress, [0.74, 0.83], [0, 1]);
-  const f4Scale = useTransform(progress, [0.74, 0.84], [0.88, 1]);
-  const f4Y = useTransform(progress, [0.74, 0.84], [80, 0]);
-  const f4PointerEvents = useTransform(progress, (p) => (p >= 0.76 ? 'auto' : 'none'));
-
-  // Direct card-style jump on click: instantly activates clicked card without traversing intermediate path
-  const jumpToFraction = (fraction, stage) => {
+  const selectStage = (stage) => {
     setActiveStage(stage);
     if (onStageChange) onStageChange(stage);
-    isProgrammaticRef.current = true;
-    clearTimeout(scrollLockTimerRef.current);
-    scrollLockTimerRef.current = setTimeout(() => {
-      isProgrammaticRef.current = false;
-    }, 150);
+  };
 
-    if (containerRef.current) {
-      const scrollableHeight = containerRef.current.offsetHeight - window.innerHeight;
-      const top = containerRef.current.offsetTop + fraction * scrollableHeight;
-      window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+  // Smooth mouse-wheel & touchpad card-deck scrolling
+  const handleWheel = (e) => {
+    const now = Date.now();
+    if (now - lastScrollTime.current < 350) return;
+
+    if (e.deltaY > 30 && activeStage < 4) {
+      lastScrollTime.current = now;
+      selectStage(activeStage + 1);
+    } else if (e.deltaY < -30 && activeStage > 1) {
+      lastScrollTime.current = now;
+      selectStage(activeStage - 1);
     }
   };
 
+  const hudItems = [
+    { stage: 1, label: '01 Showcase' },
+    { stage: 2, label: '02 Analytics' },
+    { stage: 3, label: '03 Telemetry' },
+    { stage: 4, label: '04 Inventory' },
+  ];
+
   return (
-    <div ref={containerRef} className="relative w-full h-[400vh]">
+    <div onWheel={handleWheel} className="relative w-full min-h-[calc(100vh-8rem)] flex flex-col justify-start select-none">
       
-      {/* STATIONARY VIEWPORT STAGE (STICKY AT TOP-20) */}
-      <div className="sticky top-20 w-full min-h-[calc(100vh-6rem)] flex flex-col justify-start overflow-hidden px-2 pt-2 pb-6 select-none">
-        
-        {/* Background Ambient Glowing Watermark */}
-        <motion.div
-          style={{ opacity: watermarkOpacity, scale: watermarkScale }}
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none select-none z-0"
-        >
-          <div className="text-[12vw] font-black tracking-widest text-violet-500/30 drop-shadow-[0_0_100px_rgba(139,92,246,0.4)] whitespace-nowrap">
-            ✦ DDAS SOC
-          </div>
-        </motion.div>
+      {/* Background Ambient Glowing Watermark */}
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none select-none z-0">
+        <div className="text-[12vw] font-black tracking-widest text-violet-500/10 drop-shadow-[0_0_80px_rgba(139,92,246,0.2)] whitespace-nowrap">
+          ✦ DDAS SOC
+        </div>
+      </div>
 
-        {/* FLOATING TOP STAGE CONTROLLER HUD */}
-        <div className="w-full flex items-center justify-between bg-slate-950/85 backdrop-blur-2xl border border-slate-800/90 rounded-2xl px-4 py-2.5 shadow-2xl mb-4 z-40">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-ping" />
-            <span className="text-xs font-mono font-bold text-white tracking-wider uppercase flex items-center gap-1.5">
-              <Layers className="w-3.5 h-3.5 text-violet-400" />
-              <span>Scroll-Controlled Deck</span>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {[
-              { stage: 1, fraction: 0.0, label: '01 Showcase' },
-              { stage: 2, fraction: 0.36, label: '02 Analytics' },
-              { stage: 3, fraction: 0.65, label: '03 Telemetry' },
-              { stage: 4, fraction: 0.95, label: '04 Inventory' },
-            ].map((item) => (
-              <button
-                key={item.stage}
-                onClick={() => jumpToFraction(item.fraction, item.stage)}
-                className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all duration-300 cursor-pointer ${
-                  activeStage === item.stage
-                    ? 'bg-violet-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.6)] scale-105'
-                    : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
+      {/* FLOATING TOP STAGE CONTROLLER HUD */}
+      <div className="w-full flex items-center justify-between bg-slate-950/90 backdrop-blur-2xl border border-slate-800/90 rounded-2xl px-4 py-2.5 shadow-2xl mb-4 z-40">
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-violet-400 animate-ping" />
+          <span className="text-xs font-mono font-bold text-white tracking-wider uppercase flex items-center gap-1.5">
+            <Layers className="w-3.5 h-3.5 text-violet-400" />
+            <span>Scroll-Controlled Deck</span>
+          </span>
         </div>
 
+        <div className="flex items-center gap-2">
+          {hudItems.map((item) => (
+            <button
+              key={item.stage}
+              onClick={() => selectStage(item.stage)}
+              className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all duration-200 cursor-pointer ${
+                activeStage === item.stage
+                  ? 'bg-violet-600 text-white shadow-[0_0_18px_rgba(139,92,246,0.6)] scale-105'
+                  : 'bg-slate-900/80 text-slate-400 hover:text-white hover:bg-slate-800 border border-slate-800'
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* STACKED DECK CONTAINER */}
+      <div className="relative w-full min-h-[620px] flex-1">
+        
         {/* ========================================================
-            FRAME 1: HERO ARCHITECTURE SHOWCASE (0% SCROLL)
+            FRAME 1: HERO ARCHITECTURE SHOWCASE
             ======================================================== */}
-        <motion.div
-          style={{
-            opacity: f1Opacity,
-            scale: f1Scale,
-            y: f1Y,
-            pointerEvents: f1PointerEvents,
-          }}
-          className="absolute inset-x-2 top-16 bottom-4 flex flex-col justify-center z-30"
+        <div
+          className={`w-full transition-all duration-300 ease-out ${
+            activeStage === 1
+              ? 'opacity-100 scale-100 translate-y-0 relative z-30 pointer-events-auto block'
+              : 'opacity-0 scale-95 translate-y-4 absolute inset-0 z-10 pointer-events-none hidden'
+          }`}
         >
           <div className="rounded-3xl bg-slate-950/95 border border-slate-800/90 backdrop-blur-2xl p-6 lg:p-7 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
@@ -205,10 +129,13 @@ export default function OverviewSection({
                   Frame 01 • Architecture & Ingestion Defense
                 </h2>
               </div>
-              <div className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded-full">
-                <span>SCROLL DOWN TO OVERLAY FRAME 02</span>
+              <button
+                onClick={() => selectStage(2)}
+                className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-0.5 rounded-full hover:bg-emerald-900/60 transition-colors cursor-pointer"
+              >
+                <span>NEXT: FRAME 02</span>
                 <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
-              </div>
+              </button>
             </div>
 
             <ScrollShowcase
@@ -223,20 +150,17 @@ export default function OverviewSection({
               quarantinedCount={quarantinedCount}
             />
           </div>
-        </motion.div>
-
+        </div>
 
         {/* ========================================================
-            FRAME 2: 3 FLOATING ANALYTICS GRAPHS (25-30% OVERLAY)
+            FRAME 2: 3 FLOATING ANALYTICS GRAPHS
             ======================================================== */}
-        <motion.div
-          style={{
-            opacity: f2Opacity,
-            scale: f2Scale,
-            y: f2Y,
-            pointerEvents: f2PointerEvents,
-          }}
-          className="absolute inset-x-2 top-16 bottom-4 flex flex-col justify-center z-30"
+        <div
+          className={`w-full transition-all duration-300 ease-out ${
+            activeStage === 2
+              ? 'opacity-100 scale-100 translate-y-0 relative z-30 pointer-events-auto block'
+              : 'opacity-0 scale-95 translate-y-4 absolute inset-0 z-10 pointer-events-none hidden'
+          }`}
         >
           <div className="rounded-3xl bg-slate-950/95 border-t-2 border-t-violet-500/60 border border-slate-800/90 backdrop-blur-2xl p-6 lg:p-7 shadow-[0_25px_80px_-15px_rgba(139,92,246,0.35)] space-y-6">
             <div className="flex items-center justify-between">
@@ -251,39 +175,48 @@ export default function OverviewSection({
                   Zero-trust health speedometer dial, temporal velocity spline, and classification clearance donut
                 </p>
               </div>
-              <div className="flex items-center gap-1 text-[10px] font-mono text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full">
-                <span>SCROLL FOR FRAME 03</span>
-                <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => selectStage(1)}
+                  className="flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full hover:text-white cursor-pointer"
+                >
+                  <ChevronUp className="w-3 h-3" />
+                  <span>FRAME 01</span>
+                </button>
+                <button
+                  onClick={() => selectStage(3)}
+                  className="flex items-center gap-1 text-[10px] font-mono text-violet-300 bg-violet-950/60 border border-violet-800/60 px-2.5 py-0.5 rounded-full hover:bg-violet-900/60 transition-colors cursor-pointer"
+                >
+                  <span>NEXT: FRAME 03</span>
+                  <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                </button>
               </div>
             </div>
 
             {/* 3 Floating Cards Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <motion.div style={{ y: card1Offset }}>
+              <div>
                 <RiskGauge activeThreats={activeThreats} quarantinedCount={quarantinedCount} />
-              </motion.div>
-              <motion.div style={{ y: card2Offset }}>
+              </div>
+              <div>
                 <ThreatTrendChart anomalies={anomalies} totalDatasets={datasets.length} />
-              </motion.div>
-              <motion.div style={{ y: card3Offset }}>
+              </div>
+              <div>
                 <ClassificationDonut datasets={datasets} />
-              </motion.div>
+              </div>
             </div>
           </div>
-        </motion.div>
-
+        </div>
 
         {/* ========================================================
-            FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM (50-60% OVERLAY)
+            FRAME 3: REAL-TIME TELEMETRY & LIVE STREAM
             ======================================================== */}
-        <motion.div
-          style={{
-            opacity: f3Opacity,
-            scale: f3Scale,
-            y: f3Y,
-            pointerEvents: f3PointerEvents,
-          }}
-          className="absolute inset-x-2 top-16 bottom-4 flex flex-col justify-center z-30"
+        <div
+          className={`w-full transition-all duration-300 ease-out ${
+            activeStage === 3
+              ? 'opacity-100 scale-100 translate-y-0 relative z-30 pointer-events-auto block'
+              : 'opacity-0 scale-95 translate-y-4 absolute inset-0 z-10 pointer-events-none hidden'
+          }`}
         >
           <div className="rounded-3xl bg-slate-950/95 border-t-2 border-t-cyan-500/60 border border-slate-800/90 backdrop-blur-2xl p-6 lg:p-7 shadow-[0_25px_80px_-15px_rgba(6,182,212,0.35)] space-y-5">
             <div className="flex items-center justify-between">
@@ -298,9 +231,21 @@ export default function OverviewSection({
                   Live operational metrics across Redis cluster, containment quarantine, and SIEM event streams
                 </p>
               </div>
-              <div className="flex items-center gap-1 text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 px-2.5 py-0.5 rounded-full">
-                <span>SCROLL FOR FINAL REPOSITORY</span>
-                <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => selectStage(2)}
+                  className="flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full hover:text-white cursor-pointer"
+                >
+                  <ChevronUp className="w-3 h-3" />
+                  <span>FRAME 02</span>
+                </button>
+                <button
+                  onClick={() => selectStage(4)}
+                  className="flex items-center gap-1 text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/60 px-2.5 py-0.5 rounded-full hover:bg-cyan-900/60 transition-colors cursor-pointer"
+                >
+                  <span>NEXT: FRAME 04</span>
+                  <ChevronDown className="w-3.5 h-3.5 animate-bounce" />
+                </button>
               </div>
             </div>
 
@@ -343,7 +288,7 @@ export default function OverviewSection({
               </div>
 
               <div
-                onClick={() => jumpToFraction(0.95, 4)}
+                onClick={() => selectStage(4)}
                 className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800 backdrop-blur-xl shadow-lg hover:border-cyan-500/50 transition-all cursor-pointer group"
               >
                 <div className="flex items-center justify-between mb-1.5">
@@ -407,13 +352,13 @@ export default function OverviewSection({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={onOpenWatchdog}
-                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 border border-slate-700 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-200 border border-slate-700 transition-colors cursor-pointer"
                   >
                     🛡️ Watchdog
                   </button>
                   <button
                     onClick={onOpenAudit}
-                    className="px-2.5 py-1 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 text-[11px] font-bold text-violet-300 border border-violet-500/40 transition-colors"
+                    className="px-2.5 py-1 rounded-lg bg-violet-600/30 hover:bg-violet-600/50 text-[11px] font-bold text-violet-300 border border-violet-500/40 transition-colors cursor-pointer"
                   >
                     📜 Audit Ledger →
                   </button>
@@ -463,20 +408,17 @@ export default function OverviewSection({
               </div>
             </div>
           </div>
-        </motion.div>
-
+        </div>
 
         {/* ========================================================
-            FRAME 4: CAS REPOSITORY & DATASET INVENTORY (75-100% OVERLAY)
+            FRAME 4: CAS REPOSITORY & DATASET INVENTORY
             ======================================================== */}
-        <motion.div
-          style={{
-            opacity: f4Opacity,
-            scale: f4Scale,
-            y: f4Y,
-            pointerEvents: f4PointerEvents,
-          }}
-          className="absolute inset-x-2 top-16 bottom-4 flex flex-col justify-start z-30 overflow-y-auto scrollbar-none"
+        <div
+          className={`w-full transition-all duration-300 ease-out ${
+            activeStage === 4
+              ? 'opacity-100 scale-100 translate-y-0 relative z-30 pointer-events-auto block'
+              : 'opacity-0 scale-95 translate-y-4 absolute inset-0 z-10 pointer-events-none hidden'
+          }`}
         >
           <div className="rounded-3xl bg-slate-950/95 border-t-2 border-t-emerald-500/60 border border-slate-800/90 backdrop-blur-2xl p-6 lg:p-7 shadow-[0_25px_80px_-15px_rgba(16,185,129,0.35)] space-y-4">
             <div className="flex items-center justify-between">
@@ -488,15 +430,21 @@ export default function OverviewSection({
                   </h2>
                 </div>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Deduplicated dataset inventory with authenticated CAS downloads & role clearance filtering
+                  Multi-file bulk selection, SHA-256 sharded inventory, and instantaneous dataset downloads
                 </p>
               </div>
-              <button
-                onClick={onOpenUpload}
-                className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shadow-lg transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>⚡</span> Upload Dataset
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => selectStage(3)}
+                  className="flex items-center gap-1 text-[10px] font-mono text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded-full hover:text-white cursor-pointer"
+                >
+                  <ChevronUp className="w-3 h-3" />
+                  <span>FRAME 03</span>
+                </button>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 font-bold">
+                  {datasets.length} ITEMS
+                </span>
+              </div>
             </div>
 
             <DatasetInventory
@@ -509,9 +457,10 @@ export default function OverviewSection({
               quarantineRiskScore={myQuarantine?.risk_score}
             />
           </div>
-        </motion.div>
+        </div>
 
       </div>
+
     </div>
   );
 }
